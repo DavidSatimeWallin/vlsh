@@ -22,15 +22,17 @@ share		Uploads a file to sprunge.us. ie. to share code.
 	')
 }
 
-pub fn cd(args []string) {
+pub fn cd(args []string) ! {
 	mut target := os.home_dir()
 	if args.len > 0 {
 		target = args[0]
 	}
-	os.chdir(target)
+	os.chdir(target) or {
+		return error('could not change directory to ${target}: ${err.msg}')
+	}
 }
 
-pub fn share(args []string) ?string {
+pub fn share(args []string) !string {
 	if args.len != 1 {
 		return error('usage: share <file>')
 	}
@@ -49,7 +51,7 @@ pub fn share(args []string) ?string {
 	}
 
 	if resp.status_code == 200 || resp.status_code == 201 {
-		return resp.text
+		return resp.bytestr()
 	}
 	return error('status_code: ${resp.status_code}')
 }

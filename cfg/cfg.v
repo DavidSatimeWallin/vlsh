@@ -11,8 +11,8 @@ pub struct Cfg {
 	style     map[string][]int
 }
 
-pub fn get() ?Cfg {
-	mut cfg := Cfg{}
+pub fn get() !Cfg {
+	mut loc_cfg := Cfg{}
 
 	if !os.exists(config_file) {
 		create_default_config_file() or { return err }
@@ -22,14 +22,14 @@ pub fn get() ?Cfg {
 
 		return error('could not read from $config_file')
 	}
-	cfg.extract_aliases(config_file_data)
-	cfg.extract_paths(config_file_data) or { return err }
-	cfg.extract_style(config_file_data) or { return err }
+	loc_cfg.extract_aliases(config_file_data)
+	loc_cfg.extract_paths(config_file_data) or { return err }
+	loc_cfg.extract_style(config_file_data) or { return err }
 
-	return cfg
+	return loc_cfg
 }
 
-pub fn create_default_config_file() ? {
+pub fn create_default_config_file() ! {
 	default_config_file := [
 		'"paths',
 		'path=/usr/local/bin',
@@ -61,34 +61,34 @@ pub fn create_default_config_file() ? {
 	f.close()
 }
 
-pub fn paths() ?[]string {
-	cfg := get() or {
+pub fn paths() ![]string {
+	loc_cfg := get() or {
 
 		return error('could not get paths from $config_file')
 	}
 
-	return cfg.paths
+	return loc_cfg.paths
 }
 
-pub fn aliases() ?map[string]string {
-	cfg := get() or {
+pub fn aliases() !map[string]string {
+	loc_cfg := get() or {
 
 		return error('could not get aliases from $config_file')
 	}
 
-	return cfg.aliases
+	return loc_cfg.aliases
 }
 
-pub fn style() ?map[string][]int {
-	cfg := get() or {
+pub fn style() !map[string][]int {
+	loc_cfg := get() or {
 
 		return error('could not get style from $config_file')
 	}
 
-	return cfg.style
+	return loc_cfg.style
 }
 
-fn (mut cfg Cfg) extract_style(cfd []string) ? {
+fn (mut loc_cfg Cfg) extract_style(cfd []string) ! {
 	for ent in cfd {
 		if ent == '' {
 			continue
@@ -109,7 +109,7 @@ fn (mut cfg Cfg) extract_style(cfd []string) ? {
 			for v in rgb_split {
 				style_int_slice << v.int()
 			}
-			cfg.style[split_style[0]] = style_int_slice
+			loc_cfg.style[split_style[0]] = style_int_slice
 		}
 	}
 	mut default := map[string][]int{}
@@ -119,26 +119,26 @@ fn (mut cfg Cfg) extract_style(cfd []string) ? {
 	default['style_debug_fg'] = [251,255,234]
 
 	for k, v in default {
-		if k !in cfg.style {
-			cfg.style[k] << v
+		if k !in loc_cfg.style {
+			loc_cfg.style[k] << v
 		}
 	}
 
 }
 
-fn (mut cfg Cfg) extract_aliases(cfd []string) {
+fn (mut loc_cfg Cfg) extract_aliases(cfd []string) {
 	for ent in cfd {
 		if ent == '' {
 			continue
 		}
 		if ent[0..5].trim_space() == 'alias' {
 			split_alias := ent.replace('alias', '').trim_space().split('=')
-			cfg.aliases[split_alias[0]] = split_alias[1]
+			loc_cfg.aliases[split_alias[0]] = split_alias[1]
 		}
 	}
 }
 
-fn (mut cfg Cfg) extract_paths(cfd []string) ? {
+fn (mut loc_cfg Cfg) extract_paths(cfd []string) ! {
 	for ent in cfd {
 		if ent == '' {
 			continue
@@ -149,7 +149,7 @@ fn (mut cfg Cfg) extract_paths(cfd []string) ? {
 			for mut path in split_paths {
 				path = path.trim_right('/')
 				if os.exists(os.real_path(path)) {
-					cfg.paths << path
+					loc_cfg.paths << path
 				} else {
 					real_path := os.real_path(path)
 

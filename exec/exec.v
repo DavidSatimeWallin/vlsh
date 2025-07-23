@@ -6,7 +6,7 @@ import cfg
 import utils
 
 pub struct Cmd_object{
-	mut:
+	pub mut:
 	/*
 	cmd is the first ,iven argument which
 	we will consider to be an application
@@ -64,7 +64,7 @@ pub struct Cmd_object{
 }
 
 pub struct Task {
-	mut:
+	pub mut:
 	/*
 	cmd is a command object
 	*/
@@ -85,7 +85,7 @@ pub struct Task {
 	pipe_cmds	[]Cmd_object
 }
 
-pub fn (mut t Task) prepare_task() ?string {
+pub fn (mut t Task) prepare_task() !string {
 	/*
 	parse pipe will normalize the pipe_string that
 	we get from stdin so that we remove unnecessary
@@ -153,7 +153,7 @@ fn (mut t Task) walk_pipes() {
 	}
 }
 
-fn (mut t Task) exec() ?bool {
+fn (mut t Task) exec() !bool {
 
 	/*
 	checking if we have any aliases defined first that we should
@@ -284,7 +284,7 @@ fn alias_key_exists(key string, aliases map[string]string) bool {
 	return false
 }
 
-fn (mut c Cmd_object) find_exe() ? {
+fn (mut c Cmd_object) find_exe() ! {
 	mut trimmed_needle := ''
 	for path in c.cfg.paths {
 		trimmed_needle = c.cmd.replace(path, '').trim_left('/')

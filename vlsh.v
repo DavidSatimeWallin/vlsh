@@ -24,7 +24,7 @@ fn pre_prompt() string {
 	mut prompt := Prompt{}
 
 	style := cfg.style() or {
-		utils.fail(err.msg)
+		utils.fail(err.msg())
 
 		exit(1)
 	}
@@ -34,7 +34,7 @@ fn pre_prompt() string {
 
 	// Verify and/or update git prompt
 	prompt.update_git_info() or {
-		utils.fail(err.msg)
+		utils.fail(err.msg())
 	}
 
 	prompt.git_prompt = term.bg_rgb(
@@ -55,7 +55,7 @@ fn pre_prompt() string {
 fn main() {
 
 	if !os.exists(cfg.config_file) {
-		cfg.create_default_config_file() or { panic(err.msg) }
+		cfg.create_default_config_file() or { panic(err.msg()) }
 	}
 
 	term.clear()
@@ -63,7 +63,7 @@ fn main() {
 	for {
 		println(pre_prompt())
 		cmd := r.read_line(term.rgb(255, 112, 112, '- ')) or {
-			utils.fail(err.msg)
+			utils.fail(err.msg())
 			return
 		}
 		main_loop(cmd.str().trim_space())
@@ -82,7 +82,7 @@ fn main_loop(input string) {
 	match cmd {
 		'aliases' {
 			aliases := cfg.aliases() or {
-				utils.fail(err.msg)
+				utils.fail(err.msg())
 
 				return
 			}
@@ -90,22 +90,28 @@ fn main_loop(input string) {
 				print('${term.bold(alias_name)} : ${term.italic(alias_cmd)}\n')
 			}
 		}
-		'cd'      { cmds.cd(args) }
-		'ocp'     { cmds.ocp(args) or { utils.fail(err.msg) } }
+		'cd'      {
+			cmds.cd(args) or {
+				utils.fail(err.msg())
+
+				return
+			}
+		}
+		'ocp'     { cmds.ocp(args) or { utils.fail(err.msg()) } }
 		'exit'    { exit(0) }
 		'help'    { cmds.help(version) }
 		'version' { println('version $version') }
 		'share'   {
 			link := cmds.share(args) or {
-				utils.fail(err.msg)
+				utils.fail(err.msg())
 
 				return
 			}
 			println(link)
 		}
 		else {
-			cfg := cfg.get() or {
-				utils.fail(err.msg)
+			local_cfg := cfg.get() or {
+				utils.fail(err.msg())
 
 				return
 			}
@@ -113,17 +119,17 @@ fn main_loop(input string) {
 				cmd: exec.Cmd_object{
 					cmd  : cmd,
 					args : args,
-					cfg  : cfg
+					cfg  : local_cfg
 				}
 			}
 			t.prepare_task() or {
-				utils.fail(err.msg)
+				utils.fail(err.msg())
 			}
 		}
 	}
 }
 
-fn (mut s Prompt) update_git_info() ? {
+fn (mut s Prompt) update_git_info() ! {
 
 	// if we're still in the same git-root, don't update
 	if	s.git_repo != '' && os.getwd().contains(s.git_repo) { return }

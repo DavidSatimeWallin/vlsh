@@ -5,9 +5,7 @@ import term
 
 import cfg
 
-const (
-	debug_mode = os.getenv('VLSHDEBUG')
-)
+const debug_mode = os.getenv('VLSHDEBUG')
 
 pub fn ok(input string) {
 	println(term.ok_message('OKY| ${input}'))
@@ -21,9 +19,9 @@ pub fn warn(input string) {
 	println(term.warn_message('WRN| ${input}'))
 }
 
-pub fn debug<T>(input ...T) {
+pub fn debug[T](input ...T) {
 	style := cfg.style() or {
-		fail(err.msg)
+		fail(err.msg())
 
 		return
 	}
