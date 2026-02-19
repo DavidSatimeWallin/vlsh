@@ -1,3 +1,60 @@
+## 2026-02-19 — version 1.0.5
+
+### Bugs fixed
+
+**Glob patterns not expanded (e.g. `mv ./*.deb builds/`)**
+- Unquoted tokens containing `*` or `?` are now expanded against the
+  filesystem before being passed to a command.
+- Implemented in `parse_args()` in `utils/utils.v`: a `has_quoted` flag
+  tracks whether any character in the current token was inside quotes; when
+  flushing a token, unquoted wildcard tokens are passed through the new
+  `glob_expand()` helper which calls `os.glob()` and substitutes the sorted
+  match list (or leaves the literal intact if nothing matches).
+- Quoted wildcards (e.g. `"*.v"`) are never expanded.
+- Tilde is expanded before globbing so patterns like `~/dir/*.txt` work.
+
+### Changes
+
+**`build_deb.sh` outputs packages into `builds/`**
+- The script now creates a `builds/` directory and moves the finished
+  `.deb` file there, so packages no longer accumulate in the repo root.
+
+---
+
+## 2026-02-19 — version 1.0.4
+
+### Bugs fixed
+
+**Ctrl+C while running a command closed vlsh**
+- Pressing Ctrl+C during an external command (e.g. `grep -R … ~/`) now stops
+  only that command and returns to the prompt; vlsh no longer exits.
+- Root cause: the kernel sends SIGINT to the entire foreground process group,
+  which included vlsh itself (default disposition: terminate).
+- Fix in `exec/exec.v` (`run()`): immediately after `child.run()` (the fork),
+  the parent sets `SIGINT` to `SIG_IGN`. The child already inherited `SIG_DFL`
+  at fork time and therefore still dies normally on Ctrl+C. After
+  `child.wait()` the parent restores `SIG_DFL` for the next prompt cycle.
+- Covers all execution paths: plain commands, pipes, output redirection, and
+  piped-with-stdin chains.
+
+### Features added
+
+**`vman` plugin — V module documentation pager**
+- New example plugin `examples/v_man.v` adds the `vman <module>` command.
+- Fetches `https://modules.vlang.io/<module>.html`, converts the HTML to
+  ANSI-formatted text, and pages the result through `less -R` (or `more`).
+- Headings are bold/underlined, inline code is cyan, `<pre>` blocks are
+  preserved verbatim; `<script>`, `<style>` and `<noscript>` subtrees are
+  stripped entirely.
+- Install: `cp examples/v_man.v ~/.vlsh/plugins/v_man.v && plugins reload`
+
+**Plugin documentation in README**
+- New `### Plugins` section under `## DOCUMENTATION` explains the plugin
+  protocol, managing plugins, and describes all three example plugins
+  (`hello_plugin.v`, `git.v`, `v_man.v`).
+
+---
+
 ## 2026-02-19 — version 1.0.3
 
 ### Changes

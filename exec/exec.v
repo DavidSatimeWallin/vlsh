@@ -5,6 +5,9 @@ import os
 import cfg
 import utils
 
+// C signal API — used to protect vlsh from SIGINT while a child process runs.
+fn C.signal(signum int, handler voidptr) voidptr
+
 pub struct Cmd_object{
 	pub mut:
 	/*
@@ -315,6 +318,10 @@ fn (mut t Task) run(c Cmd_object) (int) {
 
 	child.run()
 
+	// After the fork the child already has SIG_DFL; now make the parent
+	// ignore SIGINT so that Ctrl+C only kills the child, not vlsh itself.
+	unsafe { C.signal(C.SIGINT, voidptr(1)) } // SIG_IGN
+
 	if c.input != '' {
 		child.stdin_write(c.input)
 	}
@@ -368,6 +375,9 @@ fn (mut t Task) run(c Cmd_object) (int) {
 	}
 
 	child.close()
+
+	// Restore default SIGINT handling so Ctrl+C works normally at the prompt.
+	unsafe { C.signal(C.SIGINT, voidptr(0)) } // SIG_DFL
 
 	return c.next_pipe_index
 }

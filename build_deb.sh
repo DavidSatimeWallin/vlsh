@@ -134,10 +134,13 @@ echo "==> Building ${PKG_NAME}.deb"
 dpkg-deb --build --root-owner-group "$STAGE"
 rm -rf "$STAGE"
 
+mkdir -p builds
+mv "${PKG_NAME}.deb" builds/
+
 echo ""
-echo "Done: ${PKG_NAME}.deb"
+echo "Done: builds/${PKG_NAME}.deb"
 echo ""
-echo "Install:       sudo dpkg -i ${PKG_NAME}.deb"
+echo "Install:       sudo dpkg -i builds/${PKG_NAME}.deb"
 echo "Verify:        dpkg -l vlsh"
 echo "Set as shell:  chsh -s /usr/bin/vlsh"
 echo "Uninstall:     sudo dpkg -r vlsh"

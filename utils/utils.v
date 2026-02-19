@@ -22,29 +22,55 @@ pub fn warn(input string) {
 
 // parse_args splits a command string into tokens, respecting single and
 // double quoted strings (which are kept as one token with quotes stripped).
+// Unquoted tokens that contain * or ? are glob-expanded against the filesystem;
+// if no files match the pattern is passed through unchanged.
 pub fn parse_args(input string) []string {
-	mut args := []string{}
-	mut current := strings.new_builder(32)
-	mut in_single := false
-	mut in_double := false
+	mut args       := []string{}
+	mut current    := strings.new_builder(32)
+	mut in_single  := false
+	mut in_double  := false
+	mut has_quoted := false // any part of the current token was inside quotes
 	for ch in input {
 		if ch == `'` && !in_double {
-			in_single = !in_single
+			in_single  = !in_single
+			has_quoted = true
 		} else if ch == `"` && !in_single {
-			in_double = !in_double
+			in_double  = !in_double
+			has_quoted = true
 		} else if ch == ` ` && !in_single && !in_double {
 			if current.len > 0 {
-				args << current.str()
-				current = strings.new_builder(32)
+				args << glob_expand(current.str(), has_quoted)
+				current    = strings.new_builder(32)
+				has_quoted = false
 			}
 		} else {
 			current.write_u8(ch)
 		}
 	}
 	if current.len > 0 {
-		args << current.str()
+		args << glob_expand(current.str(), has_quoted)
 	}
 	return args
+}
+
+// glob_expand returns the filesystem matches for tok when it is unquoted and
+// contains wildcard characters (* or ?).  Falls back to [tok] if quoted, no
+// wildcards, or no matches found.
+fn glob_expand(tok string, was_quoted bool) []string {
+	if was_quoted || (!tok.contains('*') && !tok.contains('?')) {
+		return [tok]
+	}
+	// Expand a leading ~ before handing the pattern to the OS glob.
+	pattern := if tok == '~' {
+		os.home_dir()
+	} else if tok.starts_with('~/') {
+		os.home_dir() + tok[1..]
+	} else {
+		tok
+	}
+	matches := os.glob(pattern) or { return [tok] }
+	if matches.len == 0 { return [tok] }
+	return matches
 }
 
 // is_env_assign reports whether tok is a shell-style KEY=VALUE assignment.

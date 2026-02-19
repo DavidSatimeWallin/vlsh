@@ -12,7 +12,7 @@ import mux
 import plugins
 import utils
 
-const version = '1.0.3'
+const version = '1.0.5'
 
 fn pre_prompt() string {
 	mut current_dir := term.colorize(term.bold, '$os.getwd() ')
