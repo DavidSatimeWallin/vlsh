@@ -12,7 +12,7 @@ import mux
 import plugins
 import utils
 
-const version = '1.0.5'
+const version = '1.0.6'
 
 fn pre_prompt() string {
 	mut current_dir := term.colorize(term.bold, '$os.getwd() ')
@@ -22,8 +22,18 @@ fn pre_prompt() string {
 
 fn tab_complete(input string) []string {
 	parts := input.split(' ')
+
+	// Let plugins handle completion for commands they claim (e.g. ssh).
+	if parts.len > 1 {
+		plugin_results := plugins.completions(input)
+		if plugin_results.len > 0 {
+			return plugin_results
+		}
+	}
+
 	last_word := parts.last()
 	cmd_prefix := if parts.len > 1 { parts[..parts.len - 1].join(' ') + ' ' } else { '' }
+	dirs_only := parts[0] == 'cd'
 
 	mut search_dir := '.'
 	mut file_prefix := last_word
@@ -55,7 +65,11 @@ fn tab_complete(input string) []string {
 			} else {
 				full_path
 			}
-			suffix := if os.is_dir(expanded_full_path) { '/' } else { '' }
+			is_dir := os.is_dir(expanded_full_path)
+			if dirs_only && !is_dir {
+				continue
+			}
+			suffix := if is_dir { '/' } else { '' }
 			results << cmd_prefix + full_path + suffix
 		}
 	}
@@ -99,6 +113,7 @@ fn main() {
 
 	term.clear()
 	mut loaded_plugins := plugins.load()
+	plugins.set_loaded(loaded_plugins)
 	mut r := Readline{}
 	r.completion_callback = tab_complete
 	load_history(mut r)
@@ -437,6 +452,7 @@ fn dispatch_cmd(cmd string, args []string, mut loaded_plugins []plugins.Plugin) 
 			match subcmd {
 				'reload' {
 					loaded_plugins = plugins.load()
+					plugins.set_loaded(loaded_plugins)
 					println('plugins: ${loaded_plugins.len} loaded')
 				}
 				'list' {
@@ -462,29 +478,51 @@ fn dispatch_cmd(cmd string, args []string, mut loaded_plugins []plugins.Plugin) 
 				}
 				'enable' {
 					if args.len < 2 {
-						utils.fail('usage: plugins enable <name>')
+						utils.fail('usage: plugins enable <name|all>')
 						return 1
 					}
 					name := args[1]
-					plugins.enable(name) or {
-						utils.fail(err.msg())
-						return 1
+					if name == 'all' {
+						plugins.enable_all() or {
+							utils.fail(err.msg())
+							return 1
+						}
+						loaded_plugins = plugins.load()
+						plugins.set_loaded(loaded_plugins)
+						println('all plugins enabled (${loaded_plugins.len} loaded)')
+					} else {
+						plugins.enable(name) or {
+							utils.fail(err.msg())
+							return 1
+						}
+						loaded_plugins = plugins.load()
+						plugins.set_loaded(loaded_plugins)
+						println('${name} enabled')
 					}
-					loaded_plugins = plugins.load()
-					println('${name} enabled')
 				}
 				'disable' {
 					if args.len < 2 {
-						utils.fail('usage: plugins disable <name>')
+						utils.fail('usage: plugins disable <name|all>')
 						return 1
 					}
 					name := args[1]
-					plugins.disable(name) or {
-						utils.fail(err.msg())
-						return 1
+					if name == 'all' {
+						plugins.disable_all() or {
+							utils.fail(err.msg())
+							return 1
+						}
+						loaded_plugins = []plugins.Plugin{}
+						plugins.set_loaded(loaded_plugins)
+						println('all plugins disabled')
+					} else {
+						plugins.disable(name) or {
+							utils.fail(err.msg())
+							return 1
+						}
+						loaded_plugins = loaded_plugins.filter(it.name != name)
+						plugins.set_loaded(loaded_plugins)
+						println('${name} disabled')
 					}
-					loaded_plugins = loaded_plugins.filter(it.name != name)
-					println('${name} disabled')
 				}
 				else {
 					utils.fail('plugins: unknown subcommand "${subcmd}" (available: list, reload, enable, disable)')

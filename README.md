@@ -11,11 +11,12 @@ to read, modify, and extend.
 - **Tilde and environment-variable expansion** — `~/path`, `$VAR`, `VAR=val cmd`
 - **Command history** — up/down arrow browsing and `Ctrl+R` incremental search;
   shared across all sessions (last 5000 entries in `~/.vlsh_history`)
-- **Tab completion** — files and directories
+- **Tab completion** — files and directories; `cd` completes only directories;
+  plugins can register custom completions (e.g. SSH hostname completion)
 - **Aliases** — defined in `~/.vlshrc` or managed live with `aliases add/remove`
 - **Plugin system** — drop a `.v` file into `~/.vlsh/plugins/`; vlsh compiles and
-  loads it automatically. Plugins can add commands, decorate the prompt, and
-  run pre/post hooks around every command.
+  loads it automatically. Plugins can add commands, decorate the prompt,
+  run pre/post hooks around every command, and provide custom tab completions.
 - **Terminal multiplexer** — built-in `mux` command splits the terminal into
   resizable panes, each running its own shell. Supports mouse selection,
   copy/paste, a status bar, and all common VT100 sequences so editors like
@@ -181,8 +182,10 @@ A plain-text file read on every command. Lines beginning with `"` are comments.
 | `path add <dir>` | Append a directory to PATH |
 | `path remove <dir>` | Remove a directory from PATH |
 | `plugins list` | List available plugins |
-| `plugins enable <name>` | Enable a plugin |
-| `plugins disable <name>` | Disable a plugin |
+| `plugins enable <name>` | Enable a disabled plugin by name |
+| `plugins enable all` | Enable every plugin at once |
+| `plugins disable <name>` | Disable a plugin by name |
+| `plugins disable all` | Disable every plugin at once |
 | `plugins reload` | Hot-reload all plugins |
 | `share <file>` | Upload a file to dpaste.com and print the URL |
 | `style list` | Show current style/colour settings |
@@ -225,9 +228,9 @@ FIELD_LIST='used,avail' df -h --no-sync .
 **Command history** – up/down arrows browse history; `Ctrl+R` searches history.
 All instances share a global history file at `~/.vlsh_history` (last 5000 entries).
 
-**Tab completion** – completes file and directory names.
+**Tab completion** – completes file and directory names. When the command is `cd`, only directories are suggested. Plugins can register a `completion` capability to provide custom completions for their commands (e.g. SSH hostnames for `ssh`).
 
-**Plugins** – drop executable scripts into `~/.vlsh/plugins/`. Each plugin can expose commands and pre/post-run hooks.
+**Plugins** – drop `.v` source files into `~/.vlsh/plugins/`. Each plugin can expose commands, pre/post-run hooks, prompt decorations, and custom tab completions.
 
 **Aliases** – defined in `~/.vlshrc` or managed with the `aliases` built-in; resolved before PATH lookup.
 
@@ -276,6 +279,7 @@ Your plugin's `main()` must handle these arguments:
 | `prompt` | Print a single line shown above the `- ` prompt |
 | `pre_hook <cmdline>` | Called before every command runs |
 | `post_hook <cmdline> <exit_code>` | Called after every command finishes |
+| `complete <input>` | Print one tab-completion candidate per line for the current input |
 
 Capability tokens (printed in response to `capabilities`):
 
@@ -285,14 +289,17 @@ Capability tokens (printed in response to `capabilities`):
 | `prompt` | Shell calls `prompt` before each prompt and displays the output above `- ` |
 | `pre_hook` | Shell calls `pre_hook <cmdline>` before every command |
 | `post_hook` | Shell calls `post_hook <cmdline> <exit_code>` after every command |
+| `completion` | Shell calls `complete <input>` on Tab; plugin prints full replacement strings |
 
 #### Managing plugins
 
 ```
-plugins list              – list all plugins in ~/.vlsh/plugins/
-plugins enable  <name>    – enable a previously disabled plugin
-plugins disable <name>    – disable a plugin without deleting it
-plugins reload            – recompile and reload all plugins
+plugins list               – list all plugins in ~/.vlsh/plugins/
+plugins enable  <name>     – enable a previously disabled plugin
+plugins enable  all        – enable every plugin at once
+plugins disable <name>     – disable a plugin without deleting it
+plugins disable all        – disable every plugin at once
+plugins reload             – recompile and reload all plugins
 ```
 
 #### Example plugin (`examples/hello_plugin.v`)
@@ -342,6 +349,25 @@ The plugin reads colours from `~/.vlshrc`; defaults are `44,59,71` (dark blue-gr
 style set style_git_bg 44 59 71
 style set style_git_fg 251 255 234
 ```
+
+#### SSH host completion plugin (`examples/ssh_hosts.v`)
+
+`ssh_hosts` provides tab completion for SSH hostnames. When you type `ssh <prefix>` and press Tab, it returns matching hosts gathered from `~/.ssh/config` and `~/.ssh/known_hosts`. It also supports `user@<prefix>` notation.
+
+```sh
+cp examples/ssh_hosts.v ~/.vlsh/plugins/ssh_hosts.v
+plugins reload
+```
+
+Usage:
+```
+ssh web<Tab>       → ssh webserver, ssh web01 …
+ssh root@db<Tab>   → ssh root@db1, ssh root@db2 …
+```
+
+Sources read (automatically, no configuration needed):
+- `~/.ssh/config` — `Host` entries (wildcard patterns like `*` are skipped)
+- `~/.ssh/known_hosts` — all non-hashed entries (hashed `|1|…` lines are skipped)
 
 #### V module documentation plugin (`examples/v_man.v`)
 
@@ -403,7 +429,7 @@ Panes close automatically when their shell process exits. The terminal is fully 
 
 **`mux`** – `enter()` is the public entry point; internally uses `Mux`, `Pane`, `LayoutNode`, `InputHandler`
 
-**`plugins`** – `load() []Plugin`, `dispatch(…) bool`, `run_pre_hooks`, `run_post_hooks`
+**`plugins`** – `load() []Plugin`, `set_loaded([]Plugin)`, `dispatch(…) bool`, `completions(input) []string`, `run_pre_hooks`, `run_post_hooks`, `enable(name)`, `disable(name)`, `enable_all()`, `disable_all()`
 
 
 ## CREDITS

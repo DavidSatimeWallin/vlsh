@@ -1,3 +1,56 @@
+## 2026-02-19 — version 1.0.6
+
+### Features added
+
+**`plugins enable all` / `plugins disable all`**
+- `plugins enable all` enables every plugin in `~/.vlsh/plugins/` in one command
+  by removing the disabled list entirely, then reloads all plugins.
+- `plugins disable all` writes every available plugin name to the disabled list
+  and immediately clears the in-memory loaded set, so no plugins run for the
+  rest of the session.
+- The existing `plugins enable <name>` and `plugins disable <name>` subcommands
+  are unchanged; `all` is simply treated as a reserved name.
+- Usage hints updated: `usage: plugins enable <name|all>` /
+  `usage: plugins disable <name|all>`.
+- Implemented via new `enable_all()` and `disable_all()` helpers in
+  `plugins/plugins.v`.
+
+**SSH hostname tab completion plugin (`examples/ssh_hosts.v`)**
+- New example plugin that provides tab completion for the `ssh` command.
+- Reads `~/.ssh/config` (explicit `Host` entries; wildcards skipped) and
+  `~/.ssh/known_hosts` (skips hashed `|1|` entries; handles `[host]:port`
+  bracket notation).
+- Supports `user@<prefix>` notation — the `user@` part is preserved in the
+  returned completions.
+- Install: `cp examples/ssh_hosts.v ~/.vlsh/plugins/ssh_hosts.v && plugins reload`
+
+**Plugin completion protocol**
+- New `completion` capability: plugins that declare it are called with
+  `complete <input>` on every Tab press and may print one full replacement
+  string per line.
+- `has_completion bool` added to the `Plugin` struct; parsed in `plugins.load()`.
+- `completions(input string) []string` added to `plugins/plugins.v`; spawns
+  each capable plugin and collects its output.
+- `set_loaded([]Plugin)` / `g_loaded` added to `plugins/plugins.v` so the
+  module-level completion dispatcher can be called from `tab_complete()`, which
+  has a fixed `fn(string) []string` signature.
+- `tab_complete()` in `vlsh.v` consults plugins first; falls back to built-in
+  file/directory completion when plugins return nothing.
+
+### Bugs fixed
+
+**`cd` tab completion now shows only directories**
+- Pressing Tab after `cd ` no longer suggests plain files; only directory names
+  (with a trailing `/`) are offered.
+
+**User-friendly error when `cd`-ing into a file**
+- Attempting `cd somefile` now prints `somefile: not a directory` instead of
+  the cryptic `could not change directory to somefile: fn () string`.
+- `${err.msg}` (method reference) replaced with `${err}` (calls `msg()`) in
+  the fallback `os.chdir` error path.
+
+---
+
 ## 2026-02-19 — version 1.0.5
 
 ### Bugs fixed

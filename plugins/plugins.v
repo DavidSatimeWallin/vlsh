@@ -9,12 +9,52 @@ const v_compiler = @VEXE
 // Plugin holds the discovered capabilities of a compiled plugin.
 pub struct Plugin {
 pub mut:
-	name         string
-	binary       string
-	commands     []string
-	has_prompt   bool
-	has_pre_hook bool
-	has_post_hook bool
+	name           string
+	binary         string
+	commands       []string
+	has_prompt     bool
+	has_pre_hook   bool
+	has_post_hook  bool
+	has_completion bool
+}
+
+// g_loaded is the active plugin list, kept here so tab_complete (a plain fn)
+// can reach plugin completions without needing it passed as a parameter.
+__global (
+	g_loaded = []Plugin{}
+)
+
+// set_loaded stores the currently active plugin list.
+pub fn set_loaded(loaded []Plugin) {
+	g_loaded = loaded.clone()
+}
+
+// completions asks every completion-capable plugin for suggestions given the
+// current input line. Each plugin is invoked as: <binary> complete <input>
+// and is expected to print one full replacement string per line.
+pub fn completions(input string) []string {
+	mut results := []string{}
+	for p in g_loaded {
+		if !p.has_completion {
+			continue
+		}
+		mut child := os.new_process(p.binary)
+		child.set_args(['complete', input])
+		child.set_redirect_stdio()
+		child.run()
+		C.close(child.stdio_fd[0])
+		child.stdio_fd[0] = -1
+		out := child.stdout_slurp()
+		child.wait()
+		child.close()
+		for line in out.split('\n') {
+			t := line.trim_space()
+			if t != '' {
+				results << t
+			}
+		}
+	}
+	return results
 }
 
 fn plugin_src_dir() string {
@@ -68,6 +108,23 @@ pub fn disable(name string) ! {
 	mut names := dis.keys()
 	names << name
 	names.sort()
+	os.write_file(disabled_file(), names.join('\n') + '\n') or { return err }
+}
+
+// enable_all clears the disabled list, making every available plugin active.
+pub fn enable_all() ! {
+	dis_file := disabled_file()
+	if os.exists(dis_file) {
+		os.rm(dis_file) or { return err }
+	}
+}
+
+// disable_all writes every available plugin name to the disabled list.
+pub fn disable_all() ! {
+	names := available()
+	if names.len == 0 {
+		return
+	}
 	os.write_file(disabled_file(), names.join('\n') + '\n') or { return err }
 }
 
@@ -154,6 +211,8 @@ pub fn load() []Plugin {
 				plugin.has_pre_hook = true
 			} else if t == 'post_hook' {
 				plugin.has_post_hook = true
+			} else if t == 'completion' {
+				plugin.has_completion = true
 			}
 		}
 

@@ -29,7 +29,7 @@ pub fn help(version string, args []string) {
 		HelpEntry{'mux',     'Enter multiplexer mode (split panes, Ctrl+V prefix).'},
 		HelpEntry{'ocp',     'Copy, overriding an existing destination file.'},
 		HelpEntry{'path',    'Manage PATH entries (list / add <dir> / remove <dir>).'},
-		HelpEntry{'plugins', 'Manage plugins (list / enable / disable / reload).'},
+		HelpEntry{'plugins', 'Manage plugins (list / enable [all] / disable [all] / reload).'},
 		HelpEntry{'share',   'Upload a file to dpaste.com and print the link.'},
 		HelpEntry{'style',   'Manage prompt colors (list / set <key> <r> <g> <b>).'},
 		HelpEntry{'venv',    'Manage session environment variables (list / add / rm).'},
@@ -62,6 +62,7 @@ fn help_sub(cmd string) {
 			println('  ${term.bold('cd')} [dir]   Change to dir, or to home directory if omitted.')
 			println('')
 			println('~ and ~/path are expanded to \$HOME.')
+			println('Tab completion after cd suggests only directories, not files.')
 		}
 		'echo' {
 			println('${term.bold('echo')} - Print arguments')
@@ -107,10 +108,17 @@ fn help_sub(cmd string) {
 		'plugins' {
 			println('${term.bold('plugins')} - Manage plugins')
 			println('')
-			println('  ${term.bold('plugins list')}             List available plugins.')
-			println('  ${term.bold('plugins enable')} <name>    Enable a plugin.')
-			println('  ${term.bold('plugins disable')} <name>   Disable a plugin.')
-			println('  ${term.bold('plugins reload')}           Reload all plugins.')
+			println('  ${term.bold('plugins list')}              List available plugins.')
+			println('  ${term.bold('plugins enable')} <name>     Enable a disabled plugin by name.')
+			println('  ${term.bold('plugins enable all')}        Enable every plugin at once.')
+			println('  ${term.bold('plugins disable')} <name>    Disable a plugin by name.')
+			println('  ${term.bold('plugins disable all')}       Disable every plugin at once.')
+			println('  ${term.bold('plugins reload')}            Recompile and reload all plugins.')
+			println('')
+			println('Plugins are .v source files placed in ~/.vlsh/plugins/.')
+			println('vlsh compiles them automatically on startup (requires v in PATH).')
+			println('Plugins can provide commands, prompt decorations, pre/post hooks,')
+			println('and custom tab completions (e.g. SSH hostname completion).')
 		}
 		'share' {
 			println('${term.bold('share')} - Share a file via dpaste.com')
@@ -172,8 +180,11 @@ pub fn cd(args []string) ! {
 	if args.len > 0 {
 		target = args[0]
 	}
+	if os.is_file(target) {
+		return error('${target}: not a directory')
+	}
 	os.chdir(target) or {
-		return error('could not change directory to ${target}: ${err.msg}')
+		return error('could not change directory to ${target}: ${err}')
 	}
 }
 

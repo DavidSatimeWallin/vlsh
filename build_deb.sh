@@ -95,7 +95,7 @@ fi
 # Compile
 # ---------------------------------------------------------------------------
 echo "==> Compiling"
-v .
+v -enable-globals -prod .
 
 # ---------------------------------------------------------------------------
 # Assemble staging tree
@@ -136,9 +136,12 @@ rm -rf "$STAGE"
 
 mkdir -p builds
 mv "${PKG_NAME}.deb" builds/
+cp vlsh "builds/${PKG_NAME}_linux"
 
 echo ""
-echo "Done: builds/${PKG_NAME}.deb"
+echo "Done:"
+echo "  builds/${PKG_NAME}.deb"
+echo "  builds/${PKG_NAME}_linux"
 echo ""
 echo "Install:       sudo dpkg -i builds/${PKG_NAME}.deb"
 echo "Verify:        dpkg -l vlsh"
