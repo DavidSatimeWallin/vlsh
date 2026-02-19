@@ -16,7 +16,7 @@ pub fn help(version string, args []string) {
 	}
 	println('${term.bold('vlsh')} - V Lang SHell v${version}')
 	println('---------------------------------------')
-	println('Copyright (c) 2021 David Satime Wallin <david@dwall.in>')
+	println('Copyright (c) 2021-2026 David Satime Wallin <david@snogerup.com>')
 	println('https://vlsh.ti-l.de')
 	println('')
 	entries := [
