@@ -12,7 +12,7 @@ import mux
 import plugins
 import utils
 
-const version = '1.0.9'
+const version = '1.0.10'
 
 fn pre_prompt() string {
 	mut current_dir := term.colorize(term.bold, '$os.getwd() ')
@@ -366,13 +366,6 @@ fn dispatch_cmd(cmd string, args []string, mut loaded_plugins []plugins.Plugin) 
 		'exit'    { exit(0) }
 		'help'    { cmds.help(version, args) }
 		'version' { println('version $version') }
-		'share' {
-			link := cmds.share(args) or {
-				utils.fail(err.msg())
-				return 1
-			}
-			println(link)
-		}
 		'ls' {
 			cmds.ls(args) or {
 				if err.msg() == '__fallthrough__' {

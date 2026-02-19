@@ -1,3 +1,22 @@
+## 2026-02-19 — version 1.0.10
+
+### Changes
+
+**`share` command extracted into a plugin**
+- The `share <file>` built-in command has been removed from the main shell
+  binary and moved to a standalone plugin (`plugins/share.v` in the official
+  plugin repository at https://github.com/vlshcc/plugins).
+- The `pub fn share()` function and its `net.http` import have been removed
+  from `cmds/cmds.v`. The `'share'` dispatch case has been removed from
+  `vlsh.v`. The `share` entry has been removed from the `help` listing and
+  `help_sub` in `cmds/cmds.v`.
+- To restore the command: `plugins install share` then `plugins reload`.
+- Version bumped to `1.0.10` in `vlsh.v` and `v.mod`.
+- Packages rebuilt: `builds/vlsh_1.0.10_amd64.deb` and
+  `builds/vlsh_1.0.10_amd64_linux`.
+
+---
+
 ## 2026-02-19 — version 1.0.9
 
 ### Features added

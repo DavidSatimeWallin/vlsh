@@ -36,14 +36,14 @@ to read, modify, and extend.
 
 ### Pre-built packages (recommended)
 
-The latest release is **v1.0.9**. Pre-built packages for 64-bit Linux are
+The latest release is **v1.0.10**. Pre-built packages for 64-bit Linux are
 available on the [releases page](https://github.com/DavidSatimeWallin/vlsh/releases).
 
 **Debian / Ubuntu — install via `.deb`:**
 
 ```sh
-curl -LO https://github.com/DavidSatimeWallin/vlsh/releases/download/v1.0.9/vlsh_1.0.9_amd64.deb
-sudo dpkg -i vlsh_1.0.9_amd64.deb
+curl -LO https://github.com/DavidSatimeWallin/vlsh/releases/download/v1.0.10/vlsh_1.0.10_amd64.deb
+sudo dpkg -i vlsh_1.0.10_amd64.deb
 ```
 
 The package installs the binary to `/usr/bin/vlsh` and automatically adds it
@@ -52,9 +52,9 @@ to `/etc/shells` via the postinst script.
 **Other Linux — standalone binary:**
 
 ```sh
-curl -LO https://github.com/DavidSatimeWallin/vlsh/releases/download/v1.0.9/vlsh_1.0.9_amd64_linux
-chmod +x vlsh_1.0.9_amd64_linux
-sudo mv vlsh_1.0.9_amd64_linux /usr/local/bin/vlsh
+curl -LO https://github.com/DavidSatimeWallin/vlsh/releases/download/v1.0.10/vlsh_1.0.10_amd64_linux
+chmod +x vlsh_1.0.10_amd64_linux
+sudo mv vlsh_1.0.10_amd64_linux /usr/local/bin/vlsh
 ```
 
 ### Prerequisites (from source)
@@ -163,7 +163,7 @@ style_debug_fb=251,255,234
 ```
 vlsh.v          – main entry point, prompt rendering, read-eval loop
 cfg/cfg.v       – config file (~/.vlshrc) parsing, aliases, paths, style
-cmds/cmds.v     – built-in commands: help, cd, share
+cmds/cmds.v     – built-in commands: help, cd
 cmds/ls.v       – built-in colorised ls
 cmds/cp.v       – built-in overwrite-copy (ocp)
 exec/exec.v     – external-command execution, pipe chains, I/O redirection
@@ -218,7 +218,6 @@ A plain-text file read on every command. Lines beginning with `"` are comments.
 | `plugins remote search <query>` | Filter remote plugins by name |
 | `plugins install <name>` | Download and install a plugin from the remote repository |
 | `plugins delete <name>` | Delete an installed plugin |
-| `share <file>` | Upload a file to dpaste.com and print the URL |
 | `style list` | Show current style/colour settings |
 | `style set <key> <r> <g> <b>` | Set a prompt colour (RGB 0–255) |
 | `venv list` | List shell environment variables set via `venv` |
@@ -440,6 +439,20 @@ What it does:
    - `<script>`, `<style>`, and `<noscript>` blocks are stripped
 3. Opens the result in `less -R` (or `more` if `less` is unavailable). Falls
    back to printing directly if neither pager is found.
+
+#### Share plugin (`plugins/share.v`)
+
+`share` uploads a file to [dpaste.com](https://dpaste.com) and prints the resulting URL. It is available as a plugin in the official repository.
+
+```sh
+plugins install share
+plugins reload
+```
+
+Usage:
+```
+share <file>
+```
 
 ### Multiplexer (mux)
 

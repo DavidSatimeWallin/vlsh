@@ -1,7 +1,6 @@
 module cmds
 
 import os
-import net.http
 import term
 
 struct HelpEntry {
@@ -30,7 +29,6 @@ pub fn help(version string, args []string) {
 		HelpEntry{'ocp',     'Copy, overriding an existing destination file.'},
 		HelpEntry{'path',    'Manage PATH entries (list / add <dir> / remove <dir>).'},
 		HelpEntry{'plugins', 'Manage plugins (list / enable / disable / install / delete / remote).'},
-		HelpEntry{'share',   'Upload a file to dpaste.com and print the link.'},
 		HelpEntry{'style',   'Manage prompt colors (list / set <key> <r> <g> <b>).'},
 		HelpEntry{'venv',    'Manage session environment variables (list / add / rm).'},
 		HelpEntry{'version', 'Print the vlsh version.'},
@@ -128,11 +126,6 @@ fn help_sub(cmd string) {
 			println('Remote plugins are fetched from https://github.com/vlshcc/plugins.')
 			println('After installing a plugin run "plugins reload" to activate it.')
 		}
-		'share' {
-			println('${term.bold('share')} - Share a file via dpaste.com')
-			println('')
-			println('  ${term.bold('share')} <file>   Upload file and print the URL.')
-		}
 		'style' {
 			println('${term.bold('style')} - Manage prompt colors')
 			println('')
@@ -201,26 +194,3 @@ pub fn cd(args []string) ! {
 	}
 }
 
-pub fn share(args []string) !string {
-	if args.len != 1 {
-		return error('usage: share <file>')
-	}
-	if !os.exists(args[0]) {
-		return error('could not find ${args[0]}')
-	}
-	file_content := os.read_file(args[0]) or {
-		return error('could not read ${args[0]}')
-	}
-
-	mut data := map[string]string
-	host := 'https://dpaste.com/api/'
-	data['content'] = file_content
-	resp := http.post_form(host, data) or {
-		return error('could not post file: ${err.msg}')
-	}
-
-	if resp.status_code == 200 || resp.status_code == 201 {
-		return resp.bytestr()
-	}
-	return error('status_code: ${resp.status_code}')
-}
