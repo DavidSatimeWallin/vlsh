@@ -1,3 +1,61 @@
+## 2026-02-19 — version 1.0.7
+
+### Features added
+
+**Mux scrollback buffer**
+- Each mux pane now retains up to 1 000 lines of scrollback history. Rows that
+  scroll off the top of the visible area are saved into a per-pane ring buffer
+  (`scrollback [][]Cell`, max `scrollback_max = 1000` rows) in `mux/pane.v`.
+- `view_scroll_up(n int)` / `view_scroll_down(n int)` methods move the
+  viewport into or back out of the scrollback buffer.
+- While scrolled back, the view is kept anchored: every new line of output
+  increments `scroll_offset` so the same historical rows stay on screen.
+  When the buffer reaches capacity the oldest row is silently dropped (one-row
+  drift is accepted at that point).
+- An orange indicator (`-N lines`) is rendered in the top-right corner of the
+  pane whenever `scroll_offset > 0`, so the user always knows they are in
+  scroll view. Implemented in `render_pane_sb` in `mux/render.v`.
+- Text selection highlighting is suppressed while in scroll view (selection
+  coordinates are relative to the live grid only).
+
+**Mux scroll controls**
+- **Mouse wheel** — scroll wheel up/down events (SGR `Cb=64` / `Cb=65`)
+  are now intercepted in `mux/input.v` and mapped to the new
+  `scroll_pane_up` / `scroll_pane_down` `MuxAction` variants. Mouse wheel
+  always scrolls the active pane regardless of prefix state.
+- **Keyboard** — `Ctrl+V` + `PageUp` (`\x1b[5~`) / `Ctrl+V` + `PageDown`
+  (`\x1b[6~`) also scroll the active pane. Handled in the `prefix_wait` branch
+  of `InputHandler.handle()`.
+- Scrolling is wired to the new `do_scroll_pane(up bool)` helper in
+  `mux/mux.v` which moves the active pane by 5 lines per step.
+
+### Bugs fixed
+
+**SSH hostname completion plugin failed to compile**
+- `hosts_from_config() + hosts_from_known_hosts()` used the `+` operator on
+  two `[]string` values, which V does not support.
+- Fixed in `~/.vlsh/plugins/ssh_hosts.v` by replacing the expression with an
+  explicit `<<` append:
+  ```v
+  mut combined := hosts_from_config()
+  combined << hosts_from_known_hosts()
+  ```
+
+### Other changes
+
+- Version bumped to `1.0.7` in `vlsh.v` and `v.mod`.
+- `help mux` updated with the new scroll keybindings and a note about the
+  1 000-line scrollback buffer.
+- `README.md` mux section updated: feature bullet extended, keybindings table
+  includes `PageUp`, `PageDown`, and mouse wheel rows, and a paragraph
+  describing the scroll indicator was added.
+- **Disclaimer** added to `README.md`: the creator is not liable for any
+  damage, data loss, or other consequence from using vlsh or its plugins.
+- Packages rebuilt: `builds/vlsh_1.0.7_amd64.deb` and
+  `builds/vlsh_1.0.7_amd64_linux`.
+
+---
+
 ## 2026-02-19 — version 1.0.6
 
 ### Features added
