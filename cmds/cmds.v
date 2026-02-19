@@ -21,17 +21,18 @@ pub fn help(version string, args []string) {
 	println('')
 	entries := [
 		HelpEntry{'aliases', 'Manage aliases (list / add <name>=<cmd> / remove <name>).'},
-		HelpEntry{'cd',      'Change to provided directory.'},
-		HelpEntry{'echo',    'Print arguments, expanding shell variables.'},
+		HelpEntry{'cd',      'Change directory; ~ and ~/path are expanded to \$HOME.'},
+		HelpEntry{'echo',    'Print arguments, expanding \$VAR and \$0; supports > / >>.'},
 		HelpEntry{'exit',    'Exit the shell.'},
 		HelpEntry{'help',    'Displays this message. Use "help <cmd>" for details.'},
 		HelpEntry{'ls',      'List directory contents (built-in colorised view).'},
-		HelpEntry{'mux',     'Enter multiplexer mode (split panes, Ctrl+A prefix).'},
+		HelpEntry{'mux',     'Enter multiplexer mode (split panes, Ctrl+V prefix).'},
 		HelpEntry{'ocp',     'Copy, overriding an existing destination file.'},
 		HelpEntry{'path',    'Manage PATH entries (list / add <dir> / remove <dir>).'},
 		HelpEntry{'plugins', 'Manage plugins (list / enable / disable / reload).'},
 		HelpEntry{'share',   'Upload a file to dpaste.com and print the link.'},
 		HelpEntry{'style',   'Manage prompt colors (list / set <key> <r> <g> <b>).'},
+		HelpEntry{'venv',    'Manage session environment variables (list / add / rm).'},
 		HelpEntry{'version', 'Print the vlsh version.'},
 	]
 	for e in entries {
@@ -59,11 +60,15 @@ fn help_sub(cmd string) {
 			println('${term.bold('cd')} - Change directory')
 			println('')
 			println('  ${term.bold('cd')} [dir]   Change to dir, or to home directory if omitted.')
+			println('')
+			println('~ and ~/path are expanded to \$HOME.')
 		}
 		'echo' {
 			println('${term.bold('echo')} - Print arguments')
 			println('')
-			println('  ${term.bold('echo')} [args...]   Print arguments separated by spaces.')
+			println('  ${term.bold('echo')} [args...]              Print arguments separated by spaces.')
+			println('  ${term.bold('echo')} [args...] > file       Write output to file (truncate).')
+			println('  ${term.bold('echo')} [args...] >> file      Append output to file.')
 			println('')
 			println('Variable expansion:')
 			println('  \$0          The shell name (vlsh).')
@@ -124,14 +129,32 @@ fn help_sub(cmd string) {
 			println('  ${term.bold('mux')}   Enter multiplexer mode with split pane support.')
 			println('')
 			println('Key bindings (prefix: Ctrl+V):')
-			println('  Ctrl+V + |          Split current pane vertically (left/right)')
-			println('  Ctrl+V + -          Split current pane horizontally (top/bottom)')
-			println('  Ctrl+V + ←/→/↑/↓   Navigate to adjacent pane')
-			println('  Ctrl+V + Ctrl+←/→   Resize pane horizontally')
-			println('  Ctrl+V + Ctrl+↑/↓   Resize pane vertically')
-			println('  Ctrl+V + x          Close current pane')
-			println('  Ctrl+V + q          Quit mux mode (closes all panes)')
-			println('  Ctrl+V + Ctrl+V     Send literal Ctrl+V to active pane')
+			println('  Ctrl+V + |           Split current pane vertically (left/right)')
+			println('  Ctrl+V + -           Split current pane horizontally (top/bottom)')
+			println('  Ctrl+V + ←/→/↑/↓    Navigate to adjacent pane')
+			println('  Ctrl+V + Ctrl+←/→    Resize pane horizontally')
+			println('  Ctrl+V + Ctrl+↑/↓    Resize pane vertically')
+			println('  Ctrl+V + o           Cycle focus to the next pane')
+			println('  Ctrl+V + q           Quit mux mode (only when all panes closed)')
+			println('  Ctrl+V + Ctrl+V      Send literal Ctrl+V to active pane')
+			println('  Mouse click          Click a pane to make it active')
+			println('')
+			println('Panes close automatically when their shell process exits.')
+		}
+		'venv' {
+			println('${term.bold('venv')} - Manage session environment variables')
+			println('')
+			println('  ${term.bold('venv list')}                List all session variables and their values.')
+			println('  ${term.bold('venv add')} <NAME> <value>  Set a variable for the current session.')
+			println('  ${term.bold('venv rm')} <NAME>           Unset a session variable.')
+			println('')
+			println('Variables set with venv persist for the lifetime of the shell session.')
+			println('Use the VAR=value prefix syntax for one-shot variables (single command only).')
+			println('')
+			println('Examples:')
+			println('  venv add EDITOR nvim')
+			println('  venv add GOPATH ~/go')
+			println('  venv rm EDITOR')
 		}
 		'version' {
 			println('${term.bold('version')} - Print version')

@@ -61,6 +61,17 @@ pub struct Cmd_object{
 	then it's the last command in the chain.
 	*/
 	next_pipe_index			int
+	/*
+	redirect_file is the path to write stdout to when
+	the command uses > or >> output redirection.
+	Empty string means no redirection.
+	*/
+	redirect_file			string
+	/*
+	redirect_append controls whether > (false, truncate)
+	or >> (true, append) semantics are used.
+	*/
+	redirect_append			bool
 }
 
 pub struct Task {
@@ -83,9 +94,14 @@ pub struct Task {
 	to the indexes of this slice.
 	*/
 	pipe_cmds	[]Cmd_object
+	/*
+	last_exit_code is the exit code of the last
+	child process that was run.
+	*/
+	last_exit_code int
 }
 
-pub fn (mut t Task) prepare_task() !string {
+pub fn (mut t Task) prepare_task() !int {
 	/*
 	parse pipe will normalize the pipe_string that
 	we get from stdin so that we remove unnecessary
@@ -99,7 +115,18 @@ pub fn (mut t Task) prepare_task() !string {
 		return err
 	}
 
-	return ''
+	return t.last_exit_code
+}
+
+// expand_tilde expands a leading ~ or ~/ to the user's home directory.
+fn expand_tilde(s string) string {
+	if s == '~' {
+		return os.home_dir()
+	}
+	if s.starts_with('~/') {
+		return os.home_dir() + s[1..]
+	}
+	return s
 }
 
 fn requote_args(args []string) string {
@@ -134,6 +161,37 @@ fn norm_pipe(i string) string {
 	return r.join('|')
 }
 
+// parse_redirect scans a token list for > or >> operators and extracts the
+// redirect target filename.  Returns the cleaned args, filename, and append flag.
+fn parse_redirect(tokens []string) ([]string, string, bool) {
+	mut out_args     := []string{}
+	mut rfile        := ''
+	mut rappend      := false
+	mut skip_next    := false
+	for i, tok in tokens {
+		if skip_next {
+			skip_next = false
+			continue
+		}
+		if tok == '>>' {
+			rappend = true
+			if i + 1 < tokens.len {
+				rfile     = expand_tilde(tokens[i + 1])
+				skip_next = true
+			}
+		} else if tok == '>' {
+			rappend = false
+			if i + 1 < tokens.len {
+				rfile     = expand_tilde(tokens[i + 1])
+				skip_next = true
+			}
+		} else {
+			out_args << tok
+		}
+	}
+	return out_args, rfile, rappend
+}
+
 fn (mut t Task) walk_pipes() {
 	split_pipe_string := t.pipe_string.split('|')
 	len := split_pipe_string.len
@@ -143,23 +201,31 @@ fn (mut t Task) walk_pipes() {
 			continue
 		}
 		cmd := split_pipe[0]
-		mut args := []string{}
+		mut raw_args := []string{}
 		if split_pipe.len > 1 {
-			args << split_pipe[1..]
+			raw_args << split_pipe[1..]
 		}
+		// Extract any > or >> redirection from the argument list.
+		args, rfile, rappend := parse_redirect(raw_args)
+
 		mut intercept := true
 		mut next_index := index
 		if next_index + 1 == len {
 			intercept = false
 			next_index = -1
 		}
+		// If there is a file redirect we must capture stdout regardless of pipes.
+		effective_intercept    := intercept || rfile != ''
+		effective_redirect_out := effective_intercept
 		obj := Cmd_object{
-			cmd: cmd,
-			args: args,
-			cfg: t.cmd.cfg,
-			intercept_stdio: intercept,
-			set_redirect_stdio: intercept,
-			next_pipe_index: next_index
+			cmd:                cmd,
+			args:               args,
+			cfg:                t.cmd.cfg,
+			intercept_stdio:    effective_intercept,
+			set_redirect_stdio: effective_redirect_out,
+			next_pipe_index:    next_index,
+			redirect_file:      rfile,
+			redirect_append:    rappend,
 		}
 		if index == 0 {
 			t.cmd = obj
@@ -169,7 +235,7 @@ fn (mut t Task) walk_pipes() {
 	}
 }
 
-fn (mut t Task) exec() !bool {
+fn (mut t Task) exec() !int {
 
 	/*
 	checking if we have any aliases defined first that we should
@@ -232,14 +298,14 @@ fn (mut t Task) exec() !bool {
 		}
 	}
 
-	return true
+	return t.last_exit_code
 }
 
 fn (mut t Task) run(c Cmd_object) (int) {
 	mut child := os.new_process(c.fullcmd)
 
 	if c.args.len > 0 {
-		child.set_args(c.args)
+		child.set_args(c.args.map(expand_tilde(it)))
 	}
 
 	// set_redirect_stdio() must be called before run()
@@ -265,7 +331,7 @@ fn (mut t Task) run(c Cmd_object) (int) {
 		child.stdio_fd[0] = -1
 	}
 
-	if c.intercept_stdio && c.next_pipe_index >= 0 {
+	if c.intercept_stdio && c.next_pipe_index >= 0 && c.redirect_file == '' {
 		/*
 		slurp all stdout before wait() to drain the pipe and avoid
 		deadlock. stdout_slurp() blocks until the child closes its
@@ -275,6 +341,18 @@ fn (mut t Task) run(c Cmd_object) (int) {
 		output := child.stdout_slurp()
 		child.wait()
 		t.pipe_cmds[c.next_pipe_index].input = output
+	} else if c.redirect_file != '' {
+		// Output redirection: capture stdout and write to file.
+		output := child.stdout_slurp()
+		child.wait()
+		t.last_exit_code = child.code
+		flag := if c.redirect_append { 'a' } else { 'w' }
+		mut f := os.open_file(c.redirect_file, flag) or {
+			utils.fail('cannot open redirect file: ${err.msg()}')
+			return c.next_pipe_index
+		}
+		f.write_string(output) or {}
+		f.close()
 	} else if c.input != '' {
 		/*
 		last command in the pipe chain: stdout was redirected so we
@@ -282,9 +360,11 @@ fn (mut t Task) run(c Cmd_object) (int) {
 		*/
 		output := child.stdout_slurp()
 		child.wait()
+		t.last_exit_code = child.code
 		print(output)
 	} else {
 		child.wait()
+		t.last_exit_code = child.code
 	}
 
 	child.close()
@@ -314,16 +394,52 @@ fn alias_key_exists(key string, aliases map[string]string) bool {
 }
 
 fn (mut c Cmd_object) find_exe() ! {
+	// Expand ~ in the command itself (e.g. ~/bin/myscript)
+	expanded_cmd := expand_tilde(c.cmd)
+
+	// Direct paths: absolute (/foo/bar) or explicitly relative (./foo, ../foo).
+	is_direct := expanded_cmd.starts_with('/') ||
+	             expanded_cmd.starts_with('./') ||
+	             expanded_cmd.starts_with('../')
+
+	if is_direct {
+		if !os.exists(expanded_cmd) {
+			return error('${expanded_cmd}: no such file or directory')
+		}
+		if expanded_cmd.ends_with('.vsh') {
+			c.use_v_run(expanded_cmd)!
+			return
+		}
+		c.fullcmd = expanded_cmd
+		c.cmd     = expanded_cmd
+		return
+	}
+
+	// Bare .vsh filename without a path prefix: check the current directory.
+	if expanded_cmd.ends_with('.vsh') {
+		rel := './' + expanded_cmd
+		if !os.exists(rel) {
+			return error('${expanded_cmd}: no such file or directory')
+		}
+		c.use_v_run(rel)!
+		return
+	}
+
+	// Search the configured PATH directories.
 	mut trimmed_needle := ''
 	for path in c.cfg.paths {
 		trimmed_needle = c.cmd.replace(path, '').trim_left('/')
 		utils.debug('looking for $c.cmd in $path')
-		if os.exists([path, trimmed_needle].join('/')) {
+		full := [path, trimmed_needle].join('/')
+		if os.exists(full) {
 			utils.debug('found $trimmed_needle in $path')
-			c.fullcmd = [path, trimmed_needle].join('/')
-			c.path = path
-			c.cmd = trimmed_needle
-
+			if full.ends_with('.vsh') {
+				c.use_v_run(full)!
+				return
+			}
+			c.fullcmd = full
+			c.path    = path
+			c.cmd     = trimmed_needle
 			return
 		}
 	}
@@ -332,6 +448,32 @@ fn (mut c Cmd_object) find_exe() ! {
 		'$trimmed_needle not found in defined aliases or in \$PATH
         \$PATH: $c.cfg.paths'
 	)
+}
+
+// use_v_run configures the command to execute a .vsh script via `v run`.
+// The original args are preserved and appended after `run <vsh_path>`.
+fn (mut c Cmd_object) use_v_run(vsh_path string) ! {
+	v_exe := find_v_exe(c.cfg.paths)
+	if v_exe == '' {
+		return error('v: interpreter not found in PATH (required to run .vsh scripts)')
+	}
+	mut new_args := ['run', vsh_path]
+	new_args << c.args
+	c.args    = new_args
+	c.fullcmd = v_exe
+}
+
+// find_v_exe locates the V compiler/interpreter binary.
+// It searches vlsh-configured paths first, then falls back to the system PATH.
+fn find_v_exe(cfg_paths []string) string {
+	mut all_paths := cfg_paths.clone()
+	all_paths << os.getenv('PATH').split(':')
+	for dir in all_paths {
+		if dir == '' { continue }
+		full := dir + '/v'
+		if os.exists(full) { return full }
+	}
+	return ''
 }
 
 /*

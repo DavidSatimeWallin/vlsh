@@ -47,6 +47,22 @@ pub fn parse_args(input string) []string {
 	return args
 }
 
+// is_env_assign reports whether tok is a shell-style KEY=VALUE assignment.
+// The key must be a non-empty identifier (letter or underscore, then letters,
+// digits, or underscores).  Used to detect leading env-var prefixes on a
+// command line, e.g. `FOO=bar cmd arg`.
+pub fn is_env_assign(tok string) bool {
+	eq := tok.index('=') or { return false }
+	if eq == 0 { return false } // empty key
+	key := tok[..eq]
+	first := key[0]
+	if !first.is_letter() && first != `_` { return false }
+	for ch in key[1..].bytes() {
+		if !ch.is_letter() && !ch.is_digit() && ch != `_` { return false }
+	}
+	return true
+}
+
 pub fn debug[T](input ...T) {
 	style := cfg.style() or {
 		fail(err.msg())

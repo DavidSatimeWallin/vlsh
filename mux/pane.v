@@ -24,6 +24,9 @@ pub mut:
 	// VT100 parser state
 	esc_buf   string
 	in_esc    bool
+	// UTF-8 multi-byte accumulator
+	utf8_buf  []u8
+	utf8_rem  int
 }
 
 pub fn new_pane(id int, master_fd int, pid int, x int, y int, w int, h int) Pane {
@@ -70,7 +73,8 @@ fn (mut p Pane) scroll_up() {
 	for row := 1; row < p.height; row++ {
 		p.grid[row - 1] = p.grid[row].clone()
 	}
-	p.grid[p.height - 1] = []Cell{len: p.width, init: Cell{ch: ` `}}
+	blank := Cell{ch: ` `, sgr: p.cur_sgr}
+	p.grid[p.height - 1] = []Cell{len: p.width, init: blank}
 }
 
 // put_char writes ch at cur_x/cur_y with current SGR, then advances cursor.
@@ -151,33 +155,34 @@ fn (mut p Pane) handle_escape(seq string) {
 				p.cur_y = if row < 0 { 0 } else if row >= p.height { p.height - 1 } else { row }
 			}
 			`J` {
-				// Erase in Display
+				// Erase in Display — use current SGR so background colour is preserved (BCE).
+				blank := Cell{ch: ` `, sgr: p.cur_sgr}
 				n := if params_str != '' { params_str.int() } else { 0 }
 				if n == 0 {
 					// clear from cursor to end of screen
 					for col := p.cur_x; col < p.width; col++ {
-						p.grid[p.cur_y][col] = Cell{ch: ` `}
+						p.grid[p.cur_y][col] = blank
 					}
 					for row := p.cur_y + 1; row < p.height; row++ {
 						for col := 0; col < p.width; col++ {
-							p.grid[row][col] = Cell{ch: ` `}
+							p.grid[row][col] = blank
 						}
 					}
 				} else if n == 1 {
 					// clear from beginning to cursor
 					for row := 0; row < p.cur_y; row++ {
 						for col := 0; col < p.width; col++ {
-							p.grid[row][col] = Cell{ch: ` `}
+							p.grid[row][col] = blank
 						}
 					}
 					for col := 0; col <= p.cur_x && col < p.width; col++ {
-						p.grid[p.cur_y][col] = Cell{ch: ` `}
+						p.grid[p.cur_y][col] = blank
 					}
 				} else if n == 2 || n == 3 {
 					// clear entire screen
 					for row := 0; row < p.height; row++ {
 						for col := 0; col < p.width; col++ {
-							p.grid[row][col] = Cell{ch: ` `}
+							p.grid[row][col] = blank
 						}
 					}
 					p.cur_x = 0
@@ -185,20 +190,21 @@ fn (mut p Pane) handle_escape(seq string) {
 				}
 			}
 			`K` {
-				// Erase in Line
+				// Erase in Line — use current SGR so background colour is preserved (BCE).
+				blank := Cell{ch: ` `, sgr: p.cur_sgr}
 				n := if params_str != '' { params_str.int() } else { 0 }
 				if p.cur_y < p.height {
 					if n == 0 {
 						for col := p.cur_x; col < p.width; col++ {
-							p.grid[p.cur_y][col] = Cell{ch: ` `}
+							p.grid[p.cur_y][col] = blank
 						}
 					} else if n == 1 {
 						for col := 0; col <= p.cur_x && col < p.width; col++ {
-							p.grid[p.cur_y][col] = Cell{ch: ` `}
+							p.grid[p.cur_y][col] = blank
 						}
 					} else if n == 2 {
 						for col := 0; col < p.width; col++ {
-							p.grid[p.cur_y][col] = Cell{ch: ` `}
+							p.grid[p.cur_y][col] = blank
 						}
 					}
 				}
@@ -233,6 +239,30 @@ fn (mut p Pane) handle_escape(seq string) {
 	// ESC ( B  etc. — character set — ignore
 	// ESC = / > — keypad mode — ignore
 	// ESC 7 / 8 — save/restore cursor — ignore
+}
+
+// utf8_seq_len returns the total byte count for a UTF-8 sequence starting with b,
+// or 0 if b is not a valid leading byte.
+fn utf8_seq_len(b u8) int {
+	if b < 0x80  { return 1 }
+	if b < 0xC0  { return 0 } // continuation byte — not a leading byte
+	if b < 0xE0  { return 2 }
+	if b < 0xF0  { return 3 }
+	return 4
+}
+
+// utf8_buf_to_rune decodes a fully-accumulated UTF-8 byte sequence to a rune.
+fn utf8_buf_to_rune(buf []u8) rune {
+	if buf.len == 0 { return rune(0) }
+	b0 := u32(buf[0])
+	if buf.len == 1 { return rune(b0) }
+	if buf.len == 2 {
+		return rune(((b0 & 0x1F) << 6) | u32(buf[1] & 0x3F))
+	}
+	if buf.len == 3 {
+		return rune(((b0 & 0x0F) << 12) | (u32(buf[1] & 0x3F) << 6) | u32(buf[2] & 0x3F))
+	}
+	return rune(((b0 & 0x07) << 18) | (u32(buf[1] & 0x3F) << 12) | (u32(buf[2] & 0x3F) << 6) | u32(buf[3] & 0x3F))
 }
 
 // feed processes raw bytes from the PTY master and updates the pane grid.
@@ -292,10 +322,33 @@ pub fn (mut p Pane) feed(data []u8) {
 			continue
 		}
 
+		// Handle partial UTF-8 multi-byte sequences.
+		if p.utf8_rem > 0 {
+			if b >= 0x80 && b < 0xC0 {
+				// Valid continuation byte
+				p.utf8_buf << b
+				p.utf8_rem--
+				if p.utf8_rem == 0 {
+					p.put_char(utf8_buf_to_rune(p.utf8_buf))
+					p.utf8_buf = []u8{}
+				}
+			} else {
+				// Invalid continuation — discard the partial sequence and reprocess b.
+				p.utf8_buf = []u8{}
+				p.utf8_rem = 0
+				continue // reprocess this byte without incrementing i
+			}
+			i++
+			continue
+		}
+
 		match b {
 			0x1b {
 				p.in_esc  = true
 				p.esc_buf = ''
+				// Discard any partial UTF-8 accumulation.
+				p.utf8_buf = []u8{}
+				p.utf8_rem = 0
 			}
 			`\r` {
 				p.cur_x = 0
@@ -322,9 +375,21 @@ pub fn (mut p Pane) feed(data []u8) {
 				p.cur_x = 0
 			}
 			else {
-				if b >= 0x20 {
+				if b >= 0xC0 {
+					// Start of a 2-, 3-, or 4-byte UTF-8 sequence.
+					seq_len := utf8_seq_len(b)
+					if seq_len >= 2 {
+						p.utf8_buf = [b]
+						p.utf8_rem = seq_len - 1
+					}
+					// If seq_len == 0 (invalid), just skip.
+				} else if b >= 0x80 {
+					// Stray continuation byte — skip.
+				} else if b >= 0x20 {
+					// Plain ASCII printable character.
 					p.put_char(rune(b))
 				}
+				// b < 0x20 and unmatched above — control character, ignore.
 			}
 		}
 		i++

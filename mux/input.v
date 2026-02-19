@@ -12,9 +12,11 @@ pub enum MuxAction {
 	resize_right  // Ctrl+V + Ctrl+→
 	resize_up     // Ctrl+V + Ctrl+↑
 	resize_down   // Ctrl+V + Ctrl+↓
-	close_pane    // Ctrl+V + x
+	close_pane    // auto-close when pane process exits
 	quit_mux      // Ctrl+V + q
 	send_prefix   // Ctrl+V + Ctrl+V  → send \x16 to pane
+	cycle_pane    // Ctrl+V + o  → cycle focus to next pane
+	mouse_click   // X10 mouse button-press event
 	none
 }
 
@@ -24,8 +26,10 @@ enum InputState {
 }
 
 pub struct InputHandler {
-mut:
-	state InputState
+pub mut:
+	state      InputState
+	click_col  int   // 0-based terminal column of the last mouse click
+	click_row  int   // 0-based terminal row of the last mouse click
 }
 
 // handle parses a chunk of bytes from stdin and returns the corresponding MuxAction.
@@ -37,6 +41,20 @@ pub fn (mut h InputHandler) handle(bytes []u8) MuxAction {
 		// Ctrl+V = 0x16
 		if bytes[0] == 0x16 {
 			h.state = .prefix_wait
+			return .none
+		}
+		// X10 mouse event: ESC [ M b x y  (6 bytes)
+		// b = button+32 (32=left press, 33=middle, 34=right, 35=release)
+		// x = col+33 (1-based col + 32), y = row+33 (1-based row + 32)
+		if bytes.len >= 6 && bytes[0] == 0x1b && bytes[1] == `[` && bytes[2] == `M` {
+			b := bytes[3]
+			// Only handle button-press events (b < 35+32? No: b is raw, b=32 is left press)
+			// b values: 32=left, 33=middle, 34=right, 35=release, 64/65=wheel
+			if b < 35 {
+				h.click_col = int(bytes[4]) - 33
+				h.click_row = int(bytes[5]) - 33
+				return .mouse_click
+			}
 			return .none
 		}
 		return .passthrough
@@ -55,7 +73,7 @@ pub fn (mut h InputHandler) handle(bytes []u8) MuxAction {
 	match b {
 		`|`  { return .split_v }
 		`-`  { return .split_h }
-		`x`  { return .close_pane }
+		`o`  { return .cycle_pane }
 		`q`  { return .quit_mux }
 		else {}
 	}

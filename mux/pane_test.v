@@ -398,3 +398,77 @@ fn test_resize_updates_position() {
 	assert p.x == 10
 	assert p.y == 5
 }
+
+// ---------------------------------------------------------------------------
+// utf8_seq_len
+// ---------------------------------------------------------------------------
+
+fn test_utf8_seq_len_ascii() {
+	assert utf8_seq_len(u8(0x41)) == 1 // 'A'
+}
+
+fn test_utf8_seq_len_two_byte() {
+	assert utf8_seq_len(u8(0xC3)) == 2 // start of 'Ä' etc.
+}
+
+fn test_utf8_seq_len_three_byte() {
+	assert utf8_seq_len(u8(0xE2)) == 3
+}
+
+fn test_utf8_seq_len_four_byte() {
+	assert utf8_seq_len(u8(0xF0)) == 4
+}
+
+fn test_utf8_seq_len_continuation_byte_returns_zero() {
+	assert utf8_seq_len(u8(0x80)) == 0
+	assert utf8_seq_len(u8(0xBF)) == 0
+}
+
+// ---------------------------------------------------------------------------
+// utf8_buf_to_rune
+// ---------------------------------------------------------------------------
+
+fn test_utf8_buf_to_rune_ascii() {
+	assert utf8_buf_to_rune([u8(0x41)]) == rune(`A`)
+}
+
+fn test_utf8_buf_to_rune_two_byte_aring() {
+	// 'å' = U+00E5, UTF-8: 0xC3 0xA5
+	assert utf8_buf_to_rune([u8(0xC3), u8(0xA5)]) == rune(0x00E5)
+}
+
+fn test_utf8_buf_to_rune_three_byte() {
+	// U+2603 (snowman) = 0xE2 0x98 0x83
+	assert utf8_buf_to_rune([u8(0xE2), u8(0x98), u8(0x83)]) == rune(0x2603)
+}
+
+fn test_utf8_buf_to_rune_empty_returns_zero() {
+	assert utf8_buf_to_rune([]) == rune(0)
+}
+
+// ---------------------------------------------------------------------------
+// feed — UTF-8 multi-byte characters
+// ---------------------------------------------------------------------------
+
+fn test_feed_utf8_two_byte_char_written_correctly() {
+	mut p := new_pane(1, -1, -1, 0, 0, 20, 5)
+	// 'å' = U+00E5, UTF-8: 0xC3 0xA5
+	p.feed([u8(0xC3), u8(0xA5)])
+	assert p.grid[0][0].ch == rune(0x00E5)
+	assert p.cur_x == 1
+}
+
+fn test_feed_utf8_three_byte_char_written_correctly() {
+	mut p := new_pane(1, -1, -1, 0, 0, 20, 5)
+	// U+2603 (snowman)
+	p.feed([u8(0xE2), u8(0x98), u8(0x83)])
+	assert p.grid[0][0].ch == rune(0x2603)
+}
+
+fn test_feed_utf8_mixed_with_ascii() {
+	mut p := new_pane(1, -1, -1, 0, 0, 20, 5)
+	// 'hå' = h (0x68) + å (0xC3 0xA5)
+	p.feed([u8(0x68), u8(0xC3), u8(0xA5)])
+	assert p.grid[0][0].ch == `h`
+	assert p.grid[0][1].ch == rune(0x00E5)
+}

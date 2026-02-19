@@ -1,0 +1,128 @@
+## 2026-02-19 12:30 UTC
+
+### Features added
+
+**Native `.vsh` script support**
+- `.vsh` files are now executed automatically via `v run` without any extra syntax.
+- Works for absolute paths (`/path/to/script.vsh`), explicit relative paths (`./script.vsh`,
+  `../script.vsh`), tilde paths (`~/bin/script.vsh`), bare filenames (`script.vsh` — resolved
+  against the current directory), and `.vsh` files found during normal PATH search.
+- `use_v_run()` added to `exec/exec.v`: rewrites the command to `v run <vsh_path> [args…]`.
+- `find_v_exe()` added to `exec/exec.v`: searches vlsh-configured paths then system `PATH`
+  for the `v` binary.
+- Relative path execution (`./foo`, `../foo`) was previously broken in `find_exe()`; fixed
+  as part of this change.
+- New tests added to `exec/exec_test.v`: `find_v_exe`, `use_v_run` (fullcmd + args
+  preservation), and absolute-path resolution.
+- `README.md` updated with a `.vsh scripts` section under Shell features.
+
+---
+
+## 2026-02-19 11:41 UTC
+
+### Bugs fixed
+
+**Tilde expansion (bugs 1–2)**
+- `~` and `~/path` are now expanded to `$HOME` in all command arguments and in
+  the command name itself (e.g. `vi ~/.config/nvim/init.vim`, `more ~/.vlshrc`).
+- `expand_tilde()` added to `exec/exec.v`; applied in `find_exe()` and when
+  setting child-process arguments.
+
+**Output redirection (bugs 3–5)**
+- `>` (truncate) and `>>` (append) are now supported for external commands and
+  for the built-in `echo`.
+- `parse_redirect()` added to `exec/exec.v`; strips redirection tokens from the
+  argument list and captures the target filename and mode.
+- `builtin_redirect()` and `write_redirect()` added to `vlsh.v` for built-ins.
+
+**UTF-8 / multibyte characters in mux (bugs 6–7)**
+- Multi-byte UTF-8 sequences (e.g. Swedish å, ä, ö) are now decoded correctly
+  in PTY output inside the multiplexer.
+- `utf8_buf` / `utf8_rem` state added to `Pane`; `utf8_seq_len()` and
+  `utf8_buf_to_rune()` helpers added to `mux/pane.v`.
+
+**AND-chains (bug 8)**
+- `cmd1 && cmd2 && cmd3` syntax is now supported; the chain stops on the first
+  non-zero exit code.
+- `split_and_chain()` added to `vlsh.v`; `main_loop` now returns an `int` exit
+  code so the chain logic can propagate failures correctly.
+
+**Documentation (bug 9)**
+- Full `## DOCUMENTATION` section added to `README.md` covering architecture
+  overview, config file format, all built-in commands, shell features (pipes,
+  redirection, &&, tilde, env-var prefix, history, tab completion, plugins),
+  multiplexer key bindings, and module API summary.
+
+**Mouse support in mux (bug 10)**
+- Clicking a pane now makes it active.
+- X10 mouse tracking (`\x1b[?1000h`) enabled on mux entry; disabled on exit.
+- `do_mouse_click()` added to `mux/mux.v`; `InputHandler` extended with
+  `click_col` / `click_row` fields and X10 packet parsing.
+
+**Mux exit message (bug 11)**
+- "Exited mux mode" is now printed to the terminal after the multiplexer
+  restores the terminal state.
+
+**CTRL+V + o cycles panes (bug 12)**
+- `Ctrl+V` + `o` now cycles focus to the next alive pane.
+- `do_cycle()` added to `mux/mux.v`; `cycle_pane` action added to
+  `MuxAction` enum and `InputHandler`.
+
+**Removed CTRL+V + x (bug 13)**
+- The `x` key binding (close pane) has been removed from the prefix map.
+  Panes still close automatically when their process exits.
+
+**nvim slow to exit in mux (bug 14)**
+- Multiplexer `select` timeout reduced from 50 ms to 5 ms so the PTY write
+  buffer drains quickly.
+- `do_close()` now tries a non-blocking `waitpid(WNOHANG)` first and only
+  sends `SIGTERM` + blocks if the process is still running.
+
+**Background colour erase in mux (bug 15)**
+- Erased cells now carry the current SGR (background colour) so that
+  applications using BCE (Background Color Erase) — such as nvim — render
+  their colour schemes correctly.
+- All `J` and `K` erase sequences and `scroll_up()` in `mux/pane.v` now
+  use `Cell{ch: ' ', sgr: p.cur_sgr}` for blank cells.
+
+**Global shared command history (bug 17)**
+- All shell instances now share a single history file at `~/.vlsh_history`
+  (last 5000 entries).
+- `load_history()` populates readline's `previous_lines` on startup;
+  `append_history()` appends each command and trims the file when it exceeds
+  5000 lines.
+
+**VAR=value command prefix (bug 18)**
+- Leading `KEY=VALUE` tokens before a command are now detected and temporarily
+  set as environment variables for the duration of that command only, then
+  unset (e.g. `FIELD_LIST='used,avail' df -h --no-sync .`).
+- `is_env_assign()` added to `utils/utils.v`; `main_loop` in `vlsh.v`
+  refactored to strip the prefix tokens, set/unset around `dispatch_cmd()`.
+
+**venv command (bug 19)**
+- New built-in `venv` manages session-scoped environment variables:
+  - `venv add <NAME> <value>` — set a variable for the current session
+  - `venv rm <NAME>`          — unset it
+  - `venv list`               — list all venv-managed variables and their values
+- Tracked variable names are stored in `__VLSH_VENV` (a colon-separated env
+  var) so no global state is required.
+
+**Test suite (bug 20)**
+- All 7 test suites now pass with 0 failures.
+- Fixed stale `input_test.v` test (`x` → `.close_pane` replaced with
+  `x` → `.passthrough`).
+- New tests added:
+  - `mux/input_test.v`   — `o` → `.cycle_pane`, X10 mouse click/release
+  - `utils/utils_test.v` — 14 tests for `is_env_assign`
+  - `exec/exec_test.v`   — 11 tests for `expand_tilde` and `parse_redirect`
+  - `mux/pane_test.v`    — 10 tests for `utf8_seq_len`, `utf8_buf_to_rune`,
+                            and multi-byte `feed`
+  - `vlsh_test.v`        — 8 tests for `split_and_chain`; 6 tests for
+                            `venv_tracked`, `venv_track`, `venv_untrack`
+
+### Not fixed in this
+
+- Bug 16: Pressing the END key inserts a tilde instead of jumping to end of
+  line. Root cause identified: V's readline (`readline_nix.c.v`) dispatches
+  on byte `2` and `3` after `ESC [` but not `4`, so `\x1b[4~` (END key)
+  leaves `~` unconsumed. Fix requires editing the V stdlib readline file.

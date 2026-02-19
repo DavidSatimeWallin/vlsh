@@ -29,8 +29,8 @@ pub fn enter() {
 		return
 	}
 
-	// Hide cursor, clear screen
-	print('\x1b[?25l\x1b[2J\x1b[H')
+	// Hide cursor, clear screen, enable X10 mouse tracking
+	print('\x1b[?25l\x1b[2J\x1b[H\x1b[?1000h')
 
 	// Install SIGWINCH handler
 	install_sigwinch()
@@ -53,7 +53,9 @@ pub fn enter() {
 	m.run()
 
 	restore_terminal(orig)
-	print('\x1b[?25h\x1b[2J\x1b[H')
+	// Disable mouse tracking, restore cursor, clear screen
+	print('\x1b[?1000l\x1b[?25h\x1b[2J\x1b[H')
+	println('Exited mux mode')
 }
 
 // spawn_first_pane creates the initial pane that fills the whole terminal.
@@ -124,6 +126,39 @@ fn (mut m Mux) do_resize(dir SplitDir, grow bool) {
 	m.dirty = true
 }
 
+// do_cycle advances active_id to the next live pane in m.panes order.
+fn (mut m Mux) do_cycle() {
+	if m.panes.len <= 1 { return }
+	mut idx := -1
+	for i, p in m.panes {
+		if p.id == m.active_id { idx = i; break }
+	}
+	if idx < 0 { return }
+	// Find the next alive pane
+	for step := 1; step <= m.panes.len; step++ {
+		next := (idx + step) % m.panes.len
+		if m.panes[next].alive {
+			m.active_id = m.panes[next].id
+			m.dirty = true
+			return
+		}
+	}
+}
+
+// do_mouse_click sets the active pane to whichever pane contains (col, row).
+fn (mut m Mux) do_mouse_click(col int, row int) {
+	for p in m.panes {
+		if !p.alive { continue }
+		if col >= p.x && col < p.x + p.width && row >= p.y && row < p.y + p.height {
+			if m.active_id != p.id {
+				m.active_id = p.id
+				m.dirty = true
+			}
+			return
+		}
+	}
+}
+
 fn (mut m Mux) do_close() {
 	mut idx := -1
 	for i, p in m.panes {
@@ -132,9 +167,14 @@ fn (mut m Mux) do_close() {
 	if idx < 0 { return }
 
 	p := m.panes[idx]
-	C.kill(p.pid, 15) // SIGTERM
+	// Try a non-blocking reap first; the process may have already exited.
+	// WNOHANG = 1
 	mut status := int(0)
-	C.waitpid(p.pid, &status, 0)
+	if C.waitpid(p.pid, &status, 1) == 0 {
+		// Still running — send SIGTERM and do a blocking wait.
+		C.kill(p.pid, 15)
+		C.waitpid(p.pid, &status, 0)
+	}
 	C.close(p.master_fd)
 	m.panes.delete(idx)
 
@@ -175,7 +215,7 @@ fn (mut m Mux) run() {
 			if p.alive { fds << p.master_fd }
 		}
 
-		readable := mux_select(fds, 50)
+		readable := mux_select(fds, 5)
 
 		// Handle stdin
 		if 0 in readable {
@@ -211,6 +251,8 @@ fn (mut m Mux) run() {
 						m.do_close()
 						if m.panes.len == 0 { break }
 					}
+					.cycle_pane   { m.do_cycle() }
+					.mouse_click  { m.do_mouse_click(m.input.click_col, m.input.click_row) }
 					.quit_mux     { break }
 					.none         {}
 				}

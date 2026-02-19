@@ -72,3 +72,61 @@ fn test_parse_args_pipe_character_is_not_special() {
 	result := parse_args('cat file | wc')
 	assert result == ['cat', 'file', '|', 'wc']
 }
+
+fn test_parse_args_env_assign_stays_one_token() {
+	// KEY=VALUE must remain a single token so is_env_assign can detect it
+	result := parse_args('FOO=bar cmd')
+	assert result == ['FOO=bar', 'cmd']
+}
+
+// ---------------------------------------------------------------------------
+// is_env_assign
+// ---------------------------------------------------------------------------
+
+fn test_is_env_assign_simple() {
+	assert is_env_assign('FOO=bar') == true
+}
+
+fn test_is_env_assign_with_underscore_key() {
+	assert is_env_assign('MY_VAR=value') == true
+}
+
+fn test_is_env_assign_key_starting_with_underscore() {
+	assert is_env_assign('_VAR=value') == true
+}
+
+fn test_is_env_assign_empty_value() {
+	assert is_env_assign('FOO=') == true
+}
+
+fn test_is_env_assign_empty_key_is_false() {
+	assert is_env_assign('=value') == false
+}
+
+fn test_is_env_assign_no_equals_is_false() {
+	assert is_env_assign('FOO') == false
+}
+
+fn test_is_env_assign_key_with_digit_start_is_false() {
+	assert is_env_assign('1FOO=bar') == false
+}
+
+fn test_is_env_assign_key_with_hyphen_is_false() {
+	assert is_env_assign('MY-VAR=value') == false
+}
+
+fn test_is_env_assign_key_with_dot_is_false() {
+	assert is_env_assign('my.var=value') == false
+}
+
+fn test_is_env_assign_numeric_key_is_false() {
+	assert is_env_assign('123=value') == false
+}
+
+fn test_is_env_assign_lowercase_key() {
+	assert is_env_assign('path=value') == true
+}
+
+fn test_is_env_assign_key_with_digits_after_first() {
+	assert is_env_assign('VAR2=value') == true
+}
