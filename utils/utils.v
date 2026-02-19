@@ -61,12 +61,24 @@ fn glob_expand(tok string, was_quoted bool) []string {
 		return [tok]
 	}
 	// Expand a leading ~ before handing the pattern to the OS glob.
-	pattern := if tok == '~' {
+	mut pattern := if tok == '~' {
 		os.home_dir()
 	} else if tok.starts_with('~/') {
 		os.home_dir() + tok[1..]
 	} else {
 		tok
+	}
+	// V's os.glob cannot handle path components like ../ or ./ because its
+	// internal walker skips '.' and '..' entries.  Resolve the directory part
+	// to an absolute path so os.glob only sees a plain filename pattern.
+	if pattern.contains('/') {
+		last_sep := pattern.last_index_u8(`/`)
+		dir      := pattern[..last_sep]
+		file_pat := pattern[last_sep + 1..]
+		real_dir := os.real_path(dir)
+		if real_dir != '' && os.is_dir(real_dir) {
+			pattern = '${real_dir}/${file_pat}'
+		}
 	}
 	matches := os.glob(pattern) or { return [tok] }
 	if matches.len == 0 { return [tok] }

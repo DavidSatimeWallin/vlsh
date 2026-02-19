@@ -1,3 +1,27 @@
+## 2026-02-19 — version 1.0.8
+
+### Bugs fixed
+
+**Glob expansion failed for paths containing `../` or `./`**
+- `cp ../plugins/* .` (and similar patterns with relative path components)
+  passed the literal `*` to the external command instead of expanding it.
+- Root cause: V's `os.glob` walks directory entries internally and explicitly
+  skips `.` and `..` entries, so any glob pattern whose directory component
+  contains `../` or `./` always returned zero matches.
+- Fixed in `utils/utils.v` (`glob_expand`): when the pattern contains a `/`,
+  the directory component is now resolved to an absolute path via
+  `os.real_path()` before `os.glob` is called.  The filename wildcard is
+  kept as-is, so `../plugins/*` becomes `/home/user/repos/plugins/*` and
+  matches correctly.
+
+### Other changes
+
+- Version bumped to `1.0.8` in `vlsh.v` and `v.mod`.
+- Packages rebuilt: `builds/vlsh_1.0.8_amd64.deb` and
+  `builds/vlsh_1.0.8_amd64_linux`.
+
+---
+
 ## 2026-02-19 — version 1.0.7
 
 ### Features added
