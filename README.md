@@ -319,6 +319,38 @@ style set style_git_bg 44 59 71
 style set style_git_fg 251 255 234
 ```
 
+#### V module documentation plugin (`examples/v_man.v`)
+
+`vman` is a man-page style viewer for the official V module documentation at
+[modules.vlang.io](https://modules.vlang.io/). It fetches the HTML for any
+standard-library module, strips the markup, and displays the result in `less`
+(with ANSI colour support) so you can scroll, search, and quit just like a
+regular man page.
+
+```sh
+cp examples/v_man.v ~/.vlsh/plugins/v_man.v
+plugins reload
+```
+
+Usage:
+```
+vman os
+vman strings
+vman net.http
+vman math
+```
+
+What it does:
+
+1. Fetches `https://modules.vlang.io/<module>.html`.
+2. Converts the HTML to ANSI-formatted text:
+   - headings become **bold** (h1 also underlined)
+   - inline `code` and `pre` blocks are cyan
+   - lists, paragraphs, and horizontal rules are preserved
+   - `<script>`, `<style>`, and `<noscript>` blocks are stripped
+3. Opens the result in `less -R` (or `more` if `less` is unavailable). Falls
+   back to printing directly if neither pager is found.
+
 ### Multiplexer (mux)
 
 Start with `mux`. A new vlsh session fills the terminal. All key sequences require the **Ctrl+V** prefix.
