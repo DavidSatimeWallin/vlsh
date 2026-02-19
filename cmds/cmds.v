@@ -29,7 +29,7 @@ pub fn help(version string, args []string) {
 		HelpEntry{'mux',     'Enter multiplexer mode (split panes, Ctrl+V prefix).'},
 		HelpEntry{'ocp',     'Copy, overriding an existing destination file.'},
 		HelpEntry{'path',    'Manage PATH entries (list / add <dir> / remove <dir>).'},
-		HelpEntry{'plugins', 'Manage plugins (list / enable [all] / disable [all] / reload).'},
+		HelpEntry{'plugins', 'Manage plugins (list / enable / disable / install / delete / remote).'},
 		HelpEntry{'share',   'Upload a file to dpaste.com and print the link.'},
 		HelpEntry{'style',   'Manage prompt colors (list / set <key> <r> <g> <b>).'},
 		HelpEntry{'venv',    'Manage session environment variables (list / add / rm).'},
@@ -108,17 +108,25 @@ fn help_sub(cmd string) {
 		'plugins' {
 			println('${term.bold('plugins')} - Manage plugins')
 			println('')
-			println('  ${term.bold('plugins list')}              List available plugins.')
-			println('  ${term.bold('plugins enable')} <name>     Enable a disabled plugin by name.')
-			println('  ${term.bold('plugins enable all')}        Enable every plugin at once.')
-			println('  ${term.bold('plugins disable')} <name>    Disable a plugin by name.')
-			println('  ${term.bold('plugins disable all')}       Disable every plugin at once.')
-			println('  ${term.bold('plugins reload')}            Recompile and reload all plugins.')
+			println('  ${term.bold('plugins list')}                     List installed plugins and their status.')
+			println('  ${term.bold('plugins enable')} <name>            Enable a disabled plugin by name.')
+			println('  ${term.bold('plugins enable all')}               Enable every plugin at once.')
+			println('  ${term.bold('plugins disable')} <name>           Disable a plugin by name.')
+			println('  ${term.bold('plugins disable all')}              Disable every plugin at once.')
+			println('  ${term.bold('plugins reload')}                   Recompile and reload all plugins.')
+			println('  ${term.bold('plugins remote')}                   List plugins available in the remote repository.')
+			println('  ${term.bold('plugins remote list')}              Same as "plugins remote".')
+			println('  ${term.bold('plugins remote search')} <query>    Search remote plugins by name.')
+			println('  ${term.bold('plugins install')} <name>           Download and install a plugin from the remote repository.')
+			println('  ${term.bold('plugins delete')} <name>            Delete an installed plugin.')
 			println('')
 			println('Plugins are .v source files placed in ~/.vlsh/plugins/.')
 			println('vlsh compiles them automatically on startup (requires v in PATH).')
 			println('Plugins can provide commands, prompt decorations, pre/post hooks,')
 			println('and custom tab completions (e.g. SSH hostname completion).')
+			println('')
+			println('Remote plugins are fetched from https://github.com/vlshcc/plugins.')
+			println('After installing a plugin run "plugins reload" to activate it.')
 		}
 		'share' {
 			println('${term.bold('share')} - Share a file via dpaste.com')

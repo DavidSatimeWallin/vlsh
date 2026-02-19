@@ -17,6 +17,9 @@ to read, modify, and extend.
 - **Plugin system** — drop a `.v` file into `~/.vlsh/plugins/`; vlsh compiles and
   loads it automatically. Plugins can add commands, decorate the prompt,
   run pre/post hooks around every command, and provide custom tab completions.
+  Browse, install, and delete plugins from the official remote repository at
+  https://github.com/vlshcc/plugins using `plugins remote`, `plugins install`,
+  and `plugins delete`.
 - **Terminal multiplexer** — built-in `mux` command splits the terminal into
   resizable panes, each running its own shell. Supports mouse selection,
   copy/paste, a status bar, per-pane scrollback history (up to 1000 lines,
@@ -33,14 +36,14 @@ to read, modify, and extend.
 
 ### Pre-built packages (recommended)
 
-The latest release is **v1.0.8**. Pre-built packages for 64-bit Linux are
+The latest release is **v1.0.9**. Pre-built packages for 64-bit Linux are
 available on the [releases page](https://github.com/DavidSatimeWallin/vlsh/releases).
 
 **Debian / Ubuntu — install via `.deb`:**
 
 ```sh
-curl -LO https://github.com/DavidSatimeWallin/vlsh/releases/download/v1.0.8/vlsh_1.0.8_amd64.deb
-sudo dpkg -i vlsh_1.0.8_amd64.deb
+curl -LO https://github.com/DavidSatimeWallin/vlsh/releases/download/v1.0.9/vlsh_1.0.9_amd64.deb
+sudo dpkg -i vlsh_1.0.9_amd64.deb
 ```
 
 The package installs the binary to `/usr/bin/vlsh` and automatically adds it
@@ -49,9 +52,9 @@ to `/etc/shells` via the postinst script.
 **Other Linux — standalone binary:**
 
 ```sh
-curl -LO https://github.com/DavidSatimeWallin/vlsh/releases/download/v1.0.8/vlsh_1.0.8_amd64_linux
-chmod +x vlsh_1.0.8_amd64_linux
-sudo mv vlsh_1.0.8_amd64_linux /usr/local/bin/vlsh
+curl -LO https://github.com/DavidSatimeWallin/vlsh/releases/download/v1.0.9/vlsh_1.0.9_amd64_linux
+chmod +x vlsh_1.0.9_amd64_linux
+sudo mv vlsh_1.0.9_amd64_linux /usr/local/bin/vlsh
 ```
 
 ### Prerequisites (from source)
@@ -70,7 +73,7 @@ v .
 Or run directly without compiling first:
 
 ```sh
-v run vlsh.v
+v run .
 ```
 
 ### System-wide install
@@ -205,12 +208,16 @@ A plain-text file read on every command. Lines beginning with `"` are comments.
 | `path list` | Show PATH entries |
 | `path add <dir>` | Append a directory to PATH |
 | `path remove <dir>` | Remove a directory from PATH |
-| `plugins list` | List available plugins |
+| `plugins list` | List locally installed plugins |
 | `plugins enable <name>` | Enable a disabled plugin by name |
 | `plugins enable all` | Enable every plugin at once |
 | `plugins disable <name>` | Disable a plugin by name |
 | `plugins disable all` | Disable every plugin at once |
 | `plugins reload` | Hot-reload all plugins |
+| `plugins remote` | List plugins available in the remote repository |
+| `plugins remote search <query>` | Filter remote plugins by name |
+| `plugins install <name>` | Download and install a plugin from the remote repository |
+| `plugins delete <name>` | Delete an installed plugin |
 | `share <file>` | Upload a file to dpaste.com and print the URL |
 | `style list` | Show current style/colour settings |
 | `style set <key> <r> <g> <b>` | Set a prompt colour (RGB 0–255) |
@@ -318,13 +325,22 @@ Capability tokens (printed in response to `capabilities`):
 #### Managing plugins
 
 ```
-plugins list               – list all plugins in ~/.vlsh/plugins/
-plugins enable  <name>     – enable a previously disabled plugin
-plugins enable  all        – enable every plugin at once
-plugins disable <name>     – disable a plugin without deleting it
-plugins disable all        – disable every plugin at once
-plugins reload             – recompile and reload all plugins
+plugins list                      – list all locally installed plugins
+plugins enable  <name>            – enable a previously disabled plugin
+plugins enable  all               – enable every plugin at once
+plugins disable <name>            – disable a plugin without deleting it
+plugins disable all               – disable every plugin at once
+plugins reload                    – recompile and reload all plugins
+plugins remote                    – list plugins in the remote repository
+plugins remote search <query>     – filter remote plugins by name
+plugins install <name>            – download and install a remote plugin
+plugins delete  <name>            – delete a locally installed plugin
 ```
+
+Plugins are sourced from the official repository at
+https://github.com/vlshcc/plugins. No external tooling is required — the
+`install` subcommand downloads plugin source files directly. After installing
+a new plugin, run `plugins reload` to compile and activate it.
 
 #### Example plugin (`examples/hello_plugin.v`)
 
@@ -456,7 +472,7 @@ Each pane retains up to 1000 lines of scrollback history. While scrolled back, a
 
 **`mux`** – `enter()` is the public entry point; internally uses `Mux`, `Pane`, `LayoutNode`, `InputHandler`
 
-**`plugins`** – `load() []Plugin`, `set_loaded([]Plugin)`, `dispatch(…) bool`, `completions(input) []string`, `run_pre_hooks`, `run_post_hooks`, `enable(name)`, `disable(name)`, `enable_all()`, `disable_all()`
+**`plugins`** – `load() []Plugin`, `dispatch(…) bool`, `completions(loaded, input) []string`, `run_pre_hooks`, `run_post_hooks`, `enable(name)`, `disable(name)`, `enable_all()`, `disable_all()`, `remote_available() ![]string`, `install(name) !`, `delete_plugin(name) !`
 
 
 ## DISCLAIMER

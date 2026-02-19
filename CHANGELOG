@@ -1,3 +1,42 @@
+## 2026-02-19 — version 1.0.9
+
+### Features added
+
+**Remote plugin repository support**
+- New `plugins remote` / `plugins remote list` subcommand lists all plugins
+  available in the official repository at https://github.com/vlshcc/plugins.
+  Already-installed plugins are shown in bold with an `[installed]` tag.
+- `plugins remote search <query>` filters the remote list by name substring
+  (case-insensitive).
+- `plugins install <name>` downloads the named `.v` source file from the remote
+  repository into `~/.vlsh/plugins/` without requiring git, curl, or any
+  external tooling. After installing, run `plugins reload` to activate it.
+- `plugins delete <name>` removes a locally installed plugin's source file and
+  compiled binary, and immediately unloads it from the active session.
+- Implemented in `plugins/plugins.v`: `remote_available() ![]string`,
+  `install(name string) !`, `delete_plugin(name string) !`. Uses
+  `https://api.github.com/repos/vlshcc/plugins/contents` for listing and
+  `https://raw.githubusercontent.com/vlshcc/plugins/main/<name>.v` for
+  downloads.
+
+### Other changes
+
+**Removed `__global` — `-enable-globals` flag no longer required**
+- The `g_loaded` global variable and `set_loaded()` function have been removed
+  from `plugins/plugins.v`.
+- `completions()` now accepts `[]Plugin` as an explicit first parameter instead
+  of reading from module-level global state.
+- The `completion_callback` in `vlsh.v` is now a closure capturing
+  `mut loaded_plugins` by reference, so tab completions always reflect the
+  current plugin list with no global state.
+- `v run .` and `v .` now work without any extra flags.
+- `build_deb.sh` updated: `-enable-globals` removed from the compile step.
+- Version bumped to `1.0.9` in `vlsh.v` and `v.mod`.
+- Packages rebuilt: `builds/vlsh_1.0.9_amd64.deb` and
+  `builds/vlsh_1.0.9_amd64_linux`.
+
+---
+
 ## 2026-02-19 — version 1.0.8
 
 ### Bugs fixed

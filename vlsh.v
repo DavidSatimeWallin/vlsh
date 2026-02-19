@@ -12,7 +12,7 @@ import mux
 import plugins
 import utils
 
-const version = '1.0.8'
+const version = '1.0.9'
 
 fn pre_prompt() string {
 	mut current_dir := term.colorize(term.bold, '$os.getwd() ')
@@ -20,12 +20,12 @@ fn pre_prompt() string {
 	return current_dir
 }
 
-fn tab_complete(input string) []string {
+fn tab_complete(input string, loaded []plugins.Plugin) []string {
 	parts := input.split(' ')
 
 	// Let plugins handle completion for commands they claim (e.g. ssh).
 	if parts.len > 1 {
-		plugin_results := plugins.completions(input)
+		plugin_results := plugins.completions(loaded, input)
 		if plugin_results.len > 0 {
 			return plugin_results
 		}
@@ -113,9 +113,10 @@ fn main() {
 
 	term.clear()
 	mut loaded_plugins := plugins.load()
-	plugins.set_loaded(loaded_plugins)
 	mut r := Readline{}
-	r.completion_callback = tab_complete
+	r.completion_callback = fn [mut loaded_plugins](input string) []string {
+		return tab_complete(input, loaded_plugins)
+	}
 	load_history(mut r)
 	for {
 		println(pre_prompt())
@@ -452,7 +453,6 @@ fn dispatch_cmd(cmd string, args []string, mut loaded_plugins []plugins.Plugin) 
 			match subcmd {
 				'reload' {
 					loaded_plugins = plugins.load()
-					plugins.set_loaded(loaded_plugins)
 					println('plugins: ${loaded_plugins.len} loaded')
 				}
 				'list' {
@@ -488,7 +488,6 @@ fn dispatch_cmd(cmd string, args []string, mut loaded_plugins []plugins.Plugin) 
 							return 1
 						}
 						loaded_plugins = plugins.load()
-						plugins.set_loaded(loaded_plugins)
 						println('all plugins enabled (${loaded_plugins.len} loaded)')
 					} else {
 						plugins.enable(name) or {
@@ -496,7 +495,6 @@ fn dispatch_cmd(cmd string, args []string, mut loaded_plugins []plugins.Plugin) 
 							return 1
 						}
 						loaded_plugins = plugins.load()
-						plugins.set_loaded(loaded_plugins)
 						println('${name} enabled')
 					}
 				}
@@ -512,7 +510,6 @@ fn dispatch_cmd(cmd string, args []string, mut loaded_plugins []plugins.Plugin) 
 							return 1
 						}
 						loaded_plugins = []plugins.Plugin{}
-						plugins.set_loaded(loaded_plugins)
 						println('all plugins disabled')
 					} else {
 						plugins.disable(name) or {
@@ -520,13 +517,73 @@ fn dispatch_cmd(cmd string, args []string, mut loaded_plugins []plugins.Plugin) 
 							return 1
 						}
 						loaded_plugins = loaded_plugins.filter(it.name != name)
-						plugins.set_loaded(loaded_plugins)
 						println('${name} disabled')
 					}
 				}
-				else {
-					utils.fail('plugins: unknown subcommand "${subcmd}" (available: list, reload, enable, disable)')
+				'remote' {
+				subsubcmd := if args.len > 1 { args[1] } else { 'list' }
+				if subsubcmd == 'search' {
+					if args.len < 3 {
+						utils.fail('usage: plugins remote search <query>')
+						return 1
+					}
+					query := args[2].to_lower()
+					names := plugins.remote_available() or {
+						utils.fail(err.msg())
+						return 1
+					}
+					for name in names {
+						if name.to_lower().contains(query) {
+							println(name)
+						}
+					}
+				} else {
+					names := plugins.remote_available() or {
+						utils.fail(err.msg())
+						return 1
+					}
+					if names.len == 0 {
+						println('no remote plugins found')
+					} else {
+						local := plugins.available()
+						for name in names {
+							if name in local {
+								println('${term.bold(name)}  [installed]')
+							} else {
+								println(name)
+							}
+						}
+					}
 				}
+			}
+			'install' {
+				if args.len < 2 {
+					utils.fail('usage: plugins install <name>')
+					return 1
+				}
+				name := args[1]
+				plugins.install(name) or {
+					utils.fail(err.msg())
+					return 1
+				}
+				println('${name} installed — run "plugins reload" to activate it')
+			}
+			'delete' {
+				if args.len < 2 {
+					utils.fail('usage: plugins delete <name>')
+					return 1
+				}
+				name := args[1]
+				plugins.delete_plugin(name) or {
+					utils.fail(err.msg())
+					return 1
+				}
+				loaded_plugins = loaded_plugins.filter(it.name != name)
+				println('${name} deleted')
+			}
+			else {
+				utils.fail('plugins: unknown subcommand "${subcmd}" (available: list, reload, enable, disable, remote, install, delete)')
+			}
 			}
 		}
 		'venv' {

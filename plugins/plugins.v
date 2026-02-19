@@ -1,10 +1,20 @@
 module plugins
 
 import os
+import net.http
+import json
 
 // v_compiler is set at build time to the exact V binary that compiled vlsh,
 // so plugins are always compiled with a working toolchain.
 const v_compiler = @VEXE
+
+const remote_api = 'https://api.github.com/repos/vlshcc/plugins/contents'
+const raw_base   = 'https://raw.githubusercontent.com/vlshcc/plugins/main'
+
+struct GHFile {
+	name string
+	download_url string
+}
 
 // Plugin holds the discovered capabilities of a compiled plugin.
 pub struct Plugin {
@@ -18,23 +28,12 @@ pub mut:
 	has_completion bool
 }
 
-// g_loaded is the active plugin list, kept here so tab_complete (a plain fn)
-// can reach plugin completions without needing it passed as a parameter.
-__global (
-	g_loaded = []Plugin{}
-)
-
-// set_loaded stores the currently active plugin list.
-pub fn set_loaded(loaded []Plugin) {
-	g_loaded = loaded.clone()
-}
-
 // completions asks every completion-capable plugin for suggestions given the
 // current input line. Each plugin is invoked as: <binary> complete <input>
 // and is expected to print one full replacement string per line.
-pub fn completions(input string) []string {
+pub fn completions(loaded []Plugin, input string) []string {
 	mut results := []string{}
-	for p in g_loaded {
+	for p in loaded {
 		if !p.has_completion {
 			continue
 		}
@@ -289,5 +288,63 @@ pub fn run_post_hooks(loaded []Plugin, cmdline string, exit_code int) {
 		child.run()
 		child.wait()
 		child.close()
+	}
+}
+
+// remote_available fetches the list of plugin names available in the remote repository.
+pub fn remote_available() ![]string {
+	resp := http.get(remote_api) or {
+		return error('could not fetch remote plugin list: ${err.msg()}')
+	}
+	if resp.status_code != 200 {
+		return error('remote returned status ${resp.status_code}')
+	}
+	files := json.decode([]GHFile, resp.body) or {
+		return error('could not parse remote plugin list')
+	}
+	mut names := []string{}
+	for f in files {
+		if f.name.ends_with('.v') {
+			names << f.name[..f.name.len - 2]
+		}
+	}
+	names.sort()
+	return names
+}
+
+// install downloads a plugin from the remote repository into ~/.vlsh/plugins/.
+pub fn install(name string) ! {
+	url := '${raw_base}/${name}.v'
+	resp := http.get(url) or {
+		return error('could not download plugin "${name}": ${err.msg()}')
+	}
+	if resp.status_code == 404 {
+		return error('plugin "${name}" not found in remote repository')
+	}
+	if resp.status_code != 200 {
+		return error('download failed with status ${resp.status_code}')
+	}
+	src_dir := plugin_src_dir()
+	os.mkdir_all(src_dir) or {
+		return error('could not create plugin directory: ${err.msg()}')
+	}
+	dest := os.join_path(src_dir, '${name}.v')
+	os.write_file(dest, resp.body) or {
+		return error('could not write plugin file: ${err.msg()}')
+	}
+}
+
+// delete_plugin removes a local plugin's source file and compiled binary.
+pub fn delete_plugin(name string) ! {
+	src := os.join_path(plugin_src_dir(), '${name}.v')
+	if !os.exists(src) {
+		return error('plugin "${name}" is not installed')
+	}
+	os.rm(src) or {
+		return error('could not remove plugin source: ${err.msg()}')
+	}
+	bin := os.join_path(plugin_bin_dir(), name)
+	if os.exists(bin) {
+		os.rm(bin) or {}
 	}
 }
