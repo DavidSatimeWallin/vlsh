@@ -1,6 +1,7 @@
 module utils
 
 import os
+import strings
 import term
 
 import cfg
@@ -17,6 +18,33 @@ pub fn fail(input string) {
 
 pub fn warn(input string) {
 	println(term.warn_message('WRN| ${input}'))
+}
+
+// parse_args splits a command string into tokens, respecting single and
+// double quoted strings (which are kept as one token with quotes stripped).
+pub fn parse_args(input string) []string {
+	mut args := []string{}
+	mut current := strings.new_builder(32)
+	mut in_single := false
+	mut in_double := false
+	for ch in input {
+		if ch == `'` && !in_double {
+			in_single = !in_single
+		} else if ch == `"` && !in_single {
+			in_double = !in_double
+		} else if ch == ` ` && !in_single && !in_double {
+			if current.len > 0 {
+				args << current.str()
+				current = strings.new_builder(32)
+			}
+		} else {
+			current.write_u8(ch)
+		}
+	}
+	if current.len > 0 {
+		args << current.str()
+	}
+	return args
 }
 
 pub fn debug[T](input ...T) {

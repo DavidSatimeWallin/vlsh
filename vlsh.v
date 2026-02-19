@@ -70,16 +70,28 @@ fn tab_complete(input string) []string {
 		file_prefix = slash_parts.last()
 		dir_part := slash_parts[..slash_parts.len - 1].join('/')
 		search_dir = if dir_part == '' { '/' } else { dir_part }
-		path_prefix = search_dir + '/'
+		path_prefix = if search_dir.ends_with('/') { search_dir } else { search_dir + '/' }
 	}
 
-	entries := os.ls(search_dir) or { return []string{} }
+	// Expand ~ to home directory for filesystem operations
+	expanded_search_dir := if search_dir.starts_with('~') {
+		os.home_dir() + search_dir[1..]
+	} else {
+		search_dir
+	}
+
+	entries := os.ls(expanded_search_dir) or { return []string{} }
 
 	mut results := []string{}
 	for entry in entries {
 		if entry.starts_with(file_prefix) {
 			full_path := path_prefix + entry
-			suffix := if os.is_dir(full_path) { '/' } else { '' }
+			expanded_full_path := if full_path.starts_with('~') {
+				os.home_dir() + full_path[1..]
+			} else {
+				full_path
+			}
+			suffix := if os.is_dir(expanded_full_path) { '/' } else { '' }
 			results << cmd_prefix + full_path + suffix
 		}
 	}
@@ -117,7 +129,10 @@ fn main() {
 
 fn main_loop(input string, mut loaded_plugins []plugins.Plugin) {
 
-	input_split := input.split(' ')
+	input_split := utils.parse_args(input)
+	if input_split.len == 0 {
+		return
+	}
 	cmd := input_split[0]
 	mut args := []string{}
 	if input_split.len > 1 {
@@ -126,14 +141,102 @@ fn main_loop(input string, mut loaded_plugins []plugins.Plugin) {
 
 	match cmd {
 		'aliases' {
-			aliases := cfg.aliases() or {
-				utils.fail(err.msg())
-
-				return
+			subcmd := if args.len > 0 { args[0] } else { 'list' }
+			match subcmd {
+				'list' {
+					aliases := cfg.aliases() or {
+						utils.fail(err.msg())
+						return
+					}
+					for alias_name, alias_cmd in aliases {
+						print('${term.bold(alias_name)} : ${term.italic(alias_cmd)}\n')
+					}
+				}
+				'add' {
+					if args.len < 2 {
+						utils.fail('usage: aliases add <name>=<cmd>')
+						return
+					}
+					mut name := ''
+					mut alias_cmd := ''
+					if args[1].contains('=') {
+						eq_idx := args[1].index('=') or { 0 }
+						name = args[1][..eq_idx]
+						alias_cmd = args[1][eq_idx + 1..]
+					} else {
+						name = args[1]
+						if args.len < 3 {
+							utils.fail('usage: aliases add <name> <cmd>')
+							return
+						}
+						alias_cmd = args[2..].join(' ')
+					}
+					if name == '' || alias_cmd == '' {
+						utils.fail('alias name and command cannot be empty')
+						return
+					}
+					cfg.add_alias(name, alias_cmd) or {
+						utils.fail(err.msg())
+						return
+					}
+					println('alias ${name} added')
+				}
+				'remove' {
+					if args.len < 2 {
+						utils.fail('usage: aliases remove <name>')
+						return
+					}
+					cfg.remove_alias(args[1]) or {
+						utils.fail(err.msg())
+						return
+					}
+					println('alias ${args[1]} removed')
+				}
+				else {
+					utils.fail('aliases: unknown subcommand "${subcmd}" (available: list, add, remove)')
+				}
 			}
-			for alias_name, alias_cmd in aliases {
-				print('${term.bold(alias_name)} : ${term.italic(alias_cmd)}\n')
+		}
+		'style' {
+			subcmd := if args.len > 0 { args[0] } else { 'list' }
+			match subcmd {
+				'list' {
+					current_style := cfg.style() or {
+						utils.fail(err.msg())
+						return
+					}
+					for key, rgb in current_style {
+						println('${term.bold(key)}: ${rgb[0]}, ${rgb[1]}, ${rgb[2]}')
+					}
+				}
+				'set' {
+					if args.len < 5 {
+						utils.fail('usage: style set <key> <r> <g> <b>')
+						return
+					}
+					cfg.set_style(args[1], args[2].int(), args[3].int(), args[4].int()) or {
+						utils.fail(err.msg())
+						return
+					}
+					println('style ${args[1]} set to ${args[2]}, ${args[3]}, ${args[4]}')
+				}
+				else {
+					utils.fail('style: unknown subcommand "${subcmd}" (available: list, set)')
+				}
 			}
+		}
+		'echo' {
+			mut parts := []string{}
+			for arg in args {
+				if arg == '$0' {
+					parts << 'vlsh'
+				} else if arg.starts_with('$') {
+					parts << os.getenv(arg[1..])
+				} else {
+					parts << arg
+				}
+			}
+			println(parts.join(' '))
 		}
 		'cd'      {
 			cmds.cd(args) or {
@@ -144,7 +247,7 @@ fn main_loop(input string, mut loaded_plugins []plugins.Plugin) {
 		}
 		'ocp'     { cmds.ocp(args) or { utils.fail(err.msg()) } }
 		'exit'    { exit(0) }
-		'help'    { cmds.help(version) }
+		'help'    { cmds.help(version, args) }
 		'version' { println('version $version') }
 		'share'   {
 			link := cmds.share(args) or {
@@ -174,6 +277,50 @@ fn main_loop(input string, mut loaded_plugins []plugins.Plugin) {
 					}
 				} else {
 					utils.fail(err.msg())
+				}
+			}
+		}
+		'path' {
+			subcmd := if args.len > 0 { args[0] } else { 'list' }
+			match subcmd {
+				'list' {
+					current_paths := cfg.paths() or {
+						utils.fail(err.msg())
+						return
+					}
+					for p in current_paths {
+						println(p)
+					}
+				}
+				'add' {
+					if args.len < 2 {
+						utils.fail('usage: path add <dir>')
+						return
+					}
+					dir := args[1]
+					if !os.exists(dir) {
+						utils.fail('directory does not exist: ${dir}')
+						return
+					}
+					cfg.add_path(dir) or {
+						utils.fail(err.msg())
+						return
+					}
+					println('added ${dir} to PATH')
+				}
+				'remove' {
+					if args.len < 2 {
+						utils.fail('usage: path remove <dir>')
+						return
+					}
+					cfg.remove_path(args[1]) or {
+						utils.fail(err.msg())
+						return
+					}
+					println('removed ${args[1]} from PATH')
+				}
+				else {
+					utils.fail('path: unknown subcommand "${subcmd}" (available: list, add, remove)')
 				}
 			}
 		}

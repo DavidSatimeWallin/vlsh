@@ -61,6 +61,164 @@ pub fn create_default_config_file() ! {
 	f.close()
 }
 
+pub fn add_path(p string) ! {
+	lines := os.read_lines(config_file) or {
+		return error('could not read ${config_file}')
+	}
+	// find last path= line and insert after it; if none found, append
+	mut insert_at := -1
+	for i, line in lines {
+		if line.trim_space().starts_with('path=') {
+			insert_at = i
+		}
+	}
+	entry := 'path=${p}'
+	mut new_lines := lines.clone()
+	if insert_at >= 0 {
+		new_lines.insert(insert_at + 1, entry)
+	} else {
+		new_lines << entry
+	}
+	mut f := os.open_file(config_file, 'w') or {
+		return error('could not open ${config_file}')
+	}
+	for line in new_lines {
+		f.writeln(line) or { return error('could not write to ${config_file}') }
+	}
+	f.close()
+}
+
+pub fn remove_path(p string) ! {
+	lines := os.read_lines(config_file) or {
+		return error('could not read ${config_file}')
+	}
+	entry := 'path=${p}'
+	mut new_lines := []string{}
+	mut found := false
+	for line in lines {
+		if line.trim_space() == entry {
+			found = true
+			continue
+		}
+		new_lines << line
+	}
+	if !found {
+		return error('path not found in config: ${p}')
+	}
+	mut f := os.open_file(config_file, 'w') or {
+		return error('could not open ${config_file}')
+	}
+	for line in new_lines {
+		f.writeln(line) or { return error('could not write to ${config_file}') }
+	}
+	f.close()
+}
+
+pub fn add_alias(name string, cmd string) ! {
+	lines := os.read_lines(config_file) or {
+		return error('could not read ${config_file}')
+	}
+	entry := 'alias ${name}=${cmd}'
+	mut new_lines := []string{}
+	mut found := false
+	for line in lines {
+		trimmed := line.trim_space()
+		if trimmed.starts_with('alias ') && trimmed[6..].trim_space().starts_with('${name}=') {
+			new_lines << entry
+			found = true
+			continue
+		}
+		new_lines << line
+	}
+	if !found {
+		mut insert_at := -1
+		for i, line in lines {
+			if line.trim_space().starts_with('alias ') {
+				insert_at = i
+			}
+		}
+		new_lines = lines.clone()
+		if insert_at >= 0 {
+			new_lines.insert(insert_at + 1, entry)
+		} else {
+			new_lines << entry
+		}
+	}
+	mut f := os.open_file(config_file, 'w') or {
+		return error('could not open ${config_file}')
+	}
+	for line in new_lines {
+		f.writeln(line) or { return error('could not write to ${config_file}') }
+	}
+	f.close()
+}
+
+pub fn remove_alias(name string) ! {
+	lines := os.read_lines(config_file) or {
+		return error('could not read ${config_file}')
+	}
+	mut new_lines := []string{}
+	mut found := false
+	for line in lines {
+		trimmed := line.trim_space()
+		if trimmed.starts_with('alias ') && trimmed[6..].trim_space().starts_with('${name}=') {
+			found = true
+			continue
+		}
+		new_lines << line
+	}
+	if !found {
+		return error('alias not found: ${name}')
+	}
+	mut f := os.open_file(config_file, 'w') or {
+		return error('could not open ${config_file}')
+	}
+	for line in new_lines {
+		f.writeln(line) or { return error('could not write to ${config_file}') }
+	}
+	f.close()
+}
+
+pub fn set_style(key string, r int, g int, b int) ! {
+	lines := os.read_lines(config_file) or {
+		return error('could not read ${config_file}')
+	}
+	entry := '${key}=${r},${g},${b}'
+	mut new_lines := []string{}
+	mut found := false
+	for line in lines {
+		trimmed := line.trim_space()
+		if trimmed.starts_with('${key}=') {
+			new_lines << entry
+			found = true
+			continue
+		}
+		new_lines << line
+	}
+	if !found {
+		mut insert_at := -1
+		for i, line in lines {
+			trimmed := line.trim_space()
+			if trimmed.starts_with('style') || trimmed.starts_with('"style') {
+				insert_at = i
+			}
+		}
+		new_lines = lines.clone()
+		if insert_at >= 0 {
+			new_lines.insert(insert_at + 1, entry)
+		} else {
+			new_lines << entry
+		}
+	}
+	mut f := os.open_file(config_file, 'w') or {
+		return error('could not open ${config_file}')
+	}
+	for line in new_lines {
+		f.writeln(line) or { return error('could not write to ${config_file}') }
+	}
+	f.close()
+}
+
 pub fn paths() ![]string {
 	loc_cfg := get() or {
 

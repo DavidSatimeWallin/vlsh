@@ -102,8 +102,21 @@ pub fn (mut t Task) prepare_task() !string {
 	return ''
 }
 
+fn requote_args(args []string) string {
+	mut parts := []string{}
+	for arg in args {
+		if arg.contains(' ') {
+			parts << '"' + arg + '"'
+		} else {
+			parts << arg
+		}
+	}
+	return parts.join(' ')
+}
+
 fn (mut t Task) parse_pipe() {
-	t.pipe_string = norm_pipe([t.cmd.cmd, t.cmd.args.join(' ')].join(' '))
+	joined := [t.cmd.cmd, requote_args(t.cmd.args)].join(' ').trim_space()
+	t.pipe_string = norm_pipe(joined)
 	t.walk_pipes()
 }
 
@@ -125,7 +138,10 @@ fn (mut t Task) walk_pipes() {
 	split_pipe_string := t.pipe_string.split('|')
 	len := split_pipe_string.len
 	for index, pipe_string in split_pipe_string {
-		split_pipe := pipe_string.split(' ')
+		split_pipe := utils.parse_args(pipe_string.trim_space())
+		if split_pipe.len == 0 {
+			continue
+		}
 		cmd := split_pipe[0]
 		mut args := []string{}
 		if split_pipe.len > 1 {
