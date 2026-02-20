@@ -69,10 +69,11 @@ fn test_handle_mouse_left_release_returns_mouse_left_release() {
 	assert h.click_row == 3
 }
 
-fn test_handle_prefix_then_q_quits_mux() {
+fn test_handle_prefix_then_q_is_passthrough() {
+	// 'q' no longer quits the mux — the binding was removed.
 	mut h := InputHandler{}
 	h.handle([u8(0x16)])
-	assert h.handle([u8(`q`)]) == .quit_mux
+	assert h.handle([u8(`q`)]) == .passthrough
 }
 
 fn test_handle_prefix_then_ctrl_v_sends_prefix_byte() {
@@ -142,6 +143,35 @@ fn test_handle_state_resets_after_each_command() {
 	h.handle([u8(`|`)]) // split_v — consumes prefix state
 	// Next regular byte should be passthrough, not a command
 	assert h.handle([u8(`q`)]) == .passthrough
+}
+
+fn test_handle_bracketed_paste_single_chunk() {
+	mut h := InputHandler{}
+	// Full bracketed paste arriving in one read: ESC[200~hello\x1b[201~
+	bytes := '\x1b[200~hello\x1b[201~'.bytes()
+	assert h.handle(bytes) == .paste_clipboard
+	assert h.paste_text == 'hello'
+}
+
+fn test_handle_bracketed_paste_multi_chunk() {
+	mut h := InputHandler{}
+	// First chunk: start + partial text (no terminator yet)
+	first := '\x1b[200~hel'.bytes()
+	assert h.handle(first) == .none
+	// Second chunk: rest of text + terminator
+	second := 'lo\x1b[201~'.bytes()
+	assert h.handle(second) == .paste_clipboard
+	assert h.paste_text == 'hello'
+}
+
+fn test_handle_bracketed_paste_clears_paste_text_on_next_call() {
+	mut h := InputHandler{}
+	h.handle('\x1b[200~hello\x1b[201~'.bytes())
+	assert h.paste_text == 'hello'
+	// Consuming the text (as do_paste_clipboard would)
+	h.paste_text = ''
+	// Subsequent regular input is still passthrough
+	assert h.handle([u8(`a`)]) == .passthrough
 }
 
 fn test_handle_prefix_must_be_followed_by_second_call() {

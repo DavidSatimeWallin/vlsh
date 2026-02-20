@@ -1,5 +1,6 @@
 module mux
 
+import encoding.base64
 import os
 import strings
 import time
@@ -60,8 +61,8 @@ pub fn enter(status_providers []string) {
 		return
 	}
 
-	// Hide cursor, clear screen, enable button-event tracking + SGR extended mouse
-	print('\x1b[?25l\x1b[2J\x1b[H\x1b[?1002h\x1b[?1006h')
+	// Hide cursor, clear screen, enable button-event tracking + SGR extended mouse + bracketed paste
+	print('\x1b[?25l\x1b[2J\x1b[H\x1b[?1002h\x1b[?1006h\x1b[?2004h')
 
 	// Install SIGWINCH handler
 	install_sigwinch()
@@ -94,8 +95,8 @@ pub fn enter(status_providers []string) {
 	m.run()
 
 	restore_terminal(orig)
-	// Disable mouse tracking, restore cursor, clear screen
-	print('\x1b[?1006l\x1b[?1002l\x1b[?25h\x1b[2J\x1b[H')
+	// Disable bracketed paste, mouse tracking, restore cursor, clear screen
+	print('\x1b[?2004l\x1b[?1006l\x1b[?1002l\x1b[?25h\x1b[2J\x1b[H')
 	println('Exited mux mode')
 }
 
@@ -222,6 +223,7 @@ fn (mut m Mux) do_mouse_left_press(col int, row int) {
 				m.sel_end_col   = ec
 				m.sel_end_row   = pane_row
 				m.clipboard = m.extract_selection_text()
+				set_system_clipboard(m.clipboard)
 			} else {
 				// Normal press: start a new drag selection
 				m.sel_active    = true
@@ -266,6 +268,7 @@ fn (mut m Mux) do_mouse_left_release(col int, row int) {
 		m.sel_active = false
 	} else {
 		m.clipboard = m.extract_selection_text()
+		set_system_clipboard(m.clipboard)
 	}
 	m.dirty = true
 }
@@ -430,6 +433,50 @@ fn (mut m Mux) refresh_status_text() {
 	}
 }
 
+// set_system_clipboard writes text to the OS clipboard so that paste shortcuts
+// (CTRL+SHIFT+V, CTRL+V, middle-click in other apps) work after a mux selection.
+// X11 and Wayland clipboard tools are tried independently (not with ||) so that
+// on hybrid sessions both clipboards are populated.
+fn set_system_clipboard(text string) {
+	b64 := base64.encode_str(text)
+	// X11: try xclip then xsel (whichever is installed).
+	os.execute('printf "%s" "${b64}" | base64 -d | xclip -selection clipboard 2>/dev/null || printf "%s" "${b64}" | base64 -d | xsel --clipboard --input 2>/dev/null')
+	// Wayland: always attempt wl-copy independently of the X11 result above.
+	os.execute('printf "%s" "${b64}" | base64 -d | wl-copy 2>/dev/null')
+	// OSC 52 fallback for terminals that support clipboard passthrough.
+	print('\x1b]52;c;${b64}\x07')
+	flush_stdout()
+}
+
+// get_system_clipboard reads the current OS clipboard text.
+fn get_system_clipboard() string {
+	result := os.execute('xclip -selection clipboard -o 2>/dev/null || xsel --clipboard --output 2>/dev/null || wl-paste --no-newline 2>/dev/null')
+	if result.exit_code == 0 {
+		return result.output
+	}
+	return ''
+}
+
+// do_paste_clipboard reads the OS clipboard and writes its contents to the
+// active pane.  Used when the terminal sends Ctrl+Shift+V as an escape
+// sequence (e.g. kitty keyboard protocol) rather than injecting text directly.
+fn (mut m Mux) do_paste_clipboard() {
+	// Prefer text extracted from a bracketed paste sequence, then OS clipboard,
+	// then the mux's own internal clipboard as a last resort.
+	mut text := m.input.paste_text
+	m.input.paste_text = ''
+	if text.len == 0 {
+		text = get_system_clipboard()
+	}
+	if text.len == 0 {
+		text = m.clipboard
+	}
+	if text.len == 0 { return }
+	fd := m.active_pane_fd()
+	if fd < 0 { return }
+	C.write(fd, text.str, usize(text.len))
+}
+
 fn (mut m Mux) run() {
 	mut buf := []u8{len: 4096}
 
@@ -478,13 +525,13 @@ fn (mut m Mux) run() {
 						if m.panes.len == 0 { break }
 					}
 					.cycle_pane         { m.do_cycle() }
-					.mouse_left_press   { m.do_mouse_left_press(m.input.click_col, m.input.click_row) }
+					.paste_clipboard    { m.do_paste_clipboard() }
+				.mouse_left_press   { m.do_mouse_left_press(m.input.click_col, m.input.click_row) }
 					.mouse_motion       { m.do_mouse_motion(m.input.click_col, m.input.click_row) }
 					.mouse_left_release { m.do_mouse_left_release(m.input.click_col, m.input.click_row) }
 					.mouse_middle_press { m.do_middle_paste(m.input.click_col, m.input.click_row) }
 					.scroll_pane_up     { m.do_scroll_pane(true) }
 					.scroll_pane_down   { m.do_scroll_pane(false) }
-					.quit_mux     { break }
 					.none         {}
 				}
 			}

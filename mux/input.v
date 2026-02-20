@@ -15,9 +15,9 @@ pub enum MuxAction {
 	resize_up          // Ctrl+V + Ctrl+↑
 	resize_down        // Ctrl+V + Ctrl+↓
 	close_pane         // auto-close when pane process exits
-	quit_mux           // Ctrl+V + q
 	send_prefix        // Ctrl+V + Ctrl+V  → send \x16 to pane
 	cycle_pane         // Ctrl+V + o  → cycle focus to next pane
+	paste_clipboard    // Ctrl+Shift+V → paste OS clipboard into active pane
 	mouse_left_press   // left button down — start/reset selection
 	mouse_left_release // left button up   — finalise selection & copy
 	mouse_motion       // motion while left button held — extend selection
@@ -30,17 +30,21 @@ pub enum MuxAction {
 enum InputState {
 	normal
 	prefix_wait
+	bracketed_paste
 }
 
 pub struct InputHandler {
 pub mut:
 	state          InputState
-	click_col      int  // 0-based terminal column of the last mouse event
-	click_row      int  // 0-based terminal row of the last mouse event
-	is_double_click bool // true when the current left press is a double-click
+	click_col      int    // 0-based terminal column of the last mouse event
+	click_row      int    // 0-based terminal row of the last mouse event
+	is_double_click bool  // true when the current left press is a double-click
 	last_press_col int
 	last_press_row int
 	last_press_ms  i64
+	paste_text     string // populated when .paste_clipboard is returned via bracketed paste
+mut:
+	paste_buf      []u8   // accumulates bytes across reads during a bracketed paste
 }
 
 // handle parses a chunk of bytes from stdin and returns the corresponding MuxAction.
@@ -113,7 +117,46 @@ pub fn (mut h InputHandler) handle(bytes []u8) MuxAction {
 		return .none
 	}
 
+	// Bracketed paste continuation: accumulate until \x1b[201~ terminator.
+	if h.state == .bracketed_paste {
+		s := bytes.bytestr()
+		if idx := s.index('\x1b[201~') {
+			h.paste_buf << bytes[..idx]
+			h.paste_text = h.paste_buf.bytestr()
+			h.paste_buf  = []u8{}
+			h.state      = .normal
+			return .paste_clipboard
+		}
+		h.paste_buf << bytes
+		return .none
+	}
+
 	if h.state == .normal {
+		// Bracketed paste start: ESC [ 2 0 0 ~  (enabled via ?2004h)
+		if bytes.len >= 6 && bytes[0] == 0x1b && bytes[1] == u8(`[`) && bytes[2] == u8(`2`) {
+			s := bytes.bytestr()
+			if s.starts_with('\x1b[200~') {
+				content := s[6..]
+				if idx := content.index('\x1b[201~') {
+					// Complete paste arrived in one chunk.
+					h.paste_text = content[..idx]
+					return .paste_clipboard
+				}
+				// Partial paste — accumulate until terminator arrives.
+				h.paste_buf = content.bytes()
+				h.state     = .bracketed_paste
+				return .none
+			}
+		}
+		// Ctrl+Shift+V: paste from OS clipboard.
+		// kitty keyboard protocol:       ESC [ 86 ; 6 u
+		// xterm modifyOtherKeys (mode 2): ESC [ 27 ; 6 ; 86 ~
+		if bytes.len >= 6 && bytes[0] == 0x1b && bytes[1] == u8(`[`) {
+			s := bytes.bytestr()
+			if s == '\x1b[86;6u' || s == '\x1b[27;6;86~' {
+				return .paste_clipboard
+			}
+		}
 		// Ctrl+V = 0x16
 		if bytes[0] == 0x16 {
 			h.state = .prefix_wait
@@ -136,7 +179,6 @@ pub fn (mut h InputHandler) handle(bytes []u8) MuxAction {
 		`|`  { return .split_v }
 		`-`  { return .split_h }
 		`o`  { return .cycle_pane }
-		`q`  { return .quit_mux }
 		else {}
 	}
 

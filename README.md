@@ -14,13 +14,15 @@ to read, modify, and extend.
 - **Tab completion** — files and directories; `cd` completes only directories;
   plugins can register custom completions (e.g. SSH hostname completion)
 - **Aliases** — defined in `~/.vlshrc` or managed live with `aliases add/remove`
-- **Plugin system** — drop a `.v` file into `~/.vlsh/plugins/`; vlsh compiles and
-  loads it automatically. Plugins can add commands, decorate the prompt,
+- **Plugin system** — plugins are installed from the official remote repository
+  into versioned directories under `~/.vlsh/plugins/<name>/<version>/`; vlsh
+  compiles them automatically. Plugins can add commands, decorate the prompt,
   run pre/post hooks around every command, provide custom tab completions, and
   contribute live text to the mux status bar (`mux_status` capability).
-  Browse, install, and delete plugins from the official remote repository at
-  https://github.com/vlshcc/plugins using `plugins remote`, `plugins install`,
-  and `plugins delete`.
+  Search plugins by name or description with `plugins search`, install the
+  latest version with `plugins install`, keep them up to date with
+  `plugins update`, and remove them with `plugins delete`. The official
+  repository is at https://github.com/vlshcc/plugins.
 - **Terminal multiplexer** — built-in `mux` command splits the terminal into
   resizable panes, each running its own shell. Supports mouse selection,
   copy/paste, a status bar, per-pane scrollback history (up to 1000 lines,
@@ -37,14 +39,14 @@ to read, modify, and extend.
 
 ### Pre-built packages (recommended)
 
-The latest release is **v1.0.11**. Pre-built packages for 64-bit Linux are
+The latest release is **v1.1.0**. Pre-built packages for 64-bit Linux are
 available on the [releases page](https://github.com/DavidSatimeWallin/vlsh/releases).
 
 **Debian / Ubuntu — install via `.deb`:**
 
 ```sh
-curl -LO https://github.com/DavidSatimeWallin/vlsh/releases/download/v1.0.11/vlsh_1.0.11_amd64.deb
-sudo dpkg -i vlsh_1.0.11_amd64.deb
+curl -LO https://github.com/DavidSatimeWallin/vlsh/releases/download/v1.1.0/vlsh_1.1.0_amd64.deb
+sudo dpkg -i vlsh_1.1.0_amd64.deb
 ```
 
 The package installs the binary to `/usr/bin/vlsh` and automatically adds it
@@ -53,9 +55,9 @@ to `/etc/shells` via the postinst script.
 **Other Linux — standalone binary:**
 
 ```sh
-curl -LO https://github.com/DavidSatimeWallin/vlsh/releases/download/v1.0.11/vlsh_1.0.11_amd64_linux
-chmod +x vlsh_1.0.11_amd64_linux
-sudo mv vlsh_1.0.11_amd64_linux /usr/local/bin/vlsh
+curl -LO https://github.com/DavidSatimeWallin/vlsh/releases/download/v1.1.0/vlsh_1.1.0_amd64_linux
+chmod +x vlsh_1.1.0_amd64_linux
+sudo mv vlsh_1.1.0_amd64_linux /usr/local/bin/vlsh
 ```
 
 ### Prerequisites (from source)
@@ -197,15 +199,16 @@ A plain-text file read on every command. Lines beginning with `"` are comments.
 | `path list` | Show PATH entries |
 | `path add <dir>` | Append a directory to PATH |
 | `path remove <dir>` | Remove a directory from PATH |
-| `plugins list` | List locally installed plugins |
+| `plugins list` | List locally installed plugins with version and status |
 | `plugins enable <name>` | Enable a disabled plugin by name |
 | `plugins enable all` | Enable every plugin at once |
 | `plugins disable <name>` | Disable a plugin by name |
 | `plugins disable all` | Disable every plugin at once |
 | `plugins reload` | Hot-reload all plugins |
-| `plugins remote` | List plugins available in the remote repository |
-| `plugins remote search <query>` | Filter remote plugins by name |
-| `plugins install <name>` | Download and install a plugin from the remote repository |
+| `plugins remote` | List remote plugins; shows installed version and available updates |
+| `plugins search <query>` | Search remote plugins by name or description |
+| `plugins install <name>` | Download and install the latest version of a plugin |
+| `plugins update [name]` | Update one or all installed plugins to their latest version |
 | `plugins delete <name>` | Delete an installed plugin |
 | `style list` | Show current style/colour settings |
 | `style set <key> <r> <g> <b>` | Set a prompt colour (RGB 0–255) |
@@ -249,7 +252,7 @@ All instances share a global history file at `~/.vlsh_history` (last 5000 entrie
 
 **Tab completion** – completes file and directory names. When the command is `cd`, only directories are suggested. Plugins can register a `completion` capability to provide custom completions for their commands (e.g. SSH hostnames for `ssh`).
 
-**Plugins** – drop `.v` source files into `~/.vlsh/plugins/`. Each plugin can expose commands, pre/post-run hooks, prompt decorations, and custom tab completions.
+**Plugins** – installed from the remote repository into versioned directories under `~/.vlsh/plugins/<name>/<version>/`. Each plugin can expose commands, pre/post-run hooks, prompt decorations, and custom tab completions.
 
 **Aliases** – defined in `~/.vlshrc` or managed with the `aliases` built-in; resolved before PATH lookup.
 
@@ -282,8 +285,8 @@ Plugins extend vlsh with new commands and prompt decorations without modifying t
 
 #### How plugins work
 
-1. Place a `.v` source file in `~/.vlsh/plugins/`.
-2. vlsh compiles it automatically on startup (requires `v` in PATH) and caches the binary alongside the source.
+1. Install a plugin from the remote repository with `plugins install <name>`. The source is stored in `~/.vlsh/plugins/<name>/<version>/`.
+2. vlsh compiles it automatically on startup (requires `v` in PATH) and caches the compiled binary in `~/.vlsh/plugins/.bin/`.
 3. The binary is called by the shell with a single argument that tells it what to do (see the protocol below).
 4. Use the built-in `plugins` command to manage them at runtime.
 
@@ -315,22 +318,24 @@ Capability tokens (printed in response to `capabilities`):
 #### Managing plugins
 
 ```
-plugins list                      – list all locally installed plugins
+plugins list                      – list installed plugins with version and status
 plugins enable  <name>            – enable a previously disabled plugin
 plugins enable  all               – enable every plugin at once
 plugins disable <name>            – disable a plugin without deleting it
 plugins disable all               – disable every plugin at once
 plugins reload                    – recompile and reload all plugins
-plugins remote                    – list plugins in the remote repository
-plugins remote search <query>     – filter remote plugins by name
-plugins install <name>            – download and install a remote plugin
+plugins remote                    – list remote plugins; shows installed version and updates
+plugins search  <query>           – search remote plugins by name or description
+plugins install <name>            – download and install the latest version
+plugins update  [name]            – update one or all plugins to their latest version
 plugins delete  <name>            – delete a locally installed plugin
 ```
 
 Plugins are sourced from the official repository at
-https://github.com/vlshcc/plugins. No external tooling is required — the
-`install` subcommand downloads plugin source files directly. After installing
-a new plugin, run `plugins reload` to compile and activate it.
+https://github.com/vlshcc/plugins. Each plugin has a `DESC` metadata file
+with its name, author, and description — used by `plugins search`. No
+external tooling is required; `install` downloads source directly. After
+installing a plugin, run `plugins reload` to compile and activate it.
 
 #### Example plugin (`examples/hello_plugin.v`)
 
@@ -360,12 +365,12 @@ println('[ example plugin ]')
 println('[ example plugin ]')
 ```
 
-#### Git prompt plugin (`examples/git.v`)
+#### Git prompt plugin
 
 Shows the current git branch and short commit hash in the prompt, styled with your `style_git_bg` / `style_git_fg` colours.
 
 ```sh
-cp examples/git.v ~/.vlsh/plugins/git.v
+plugins install git
 plugins reload
 ```
 
@@ -384,12 +389,12 @@ style set style_git_bg 44 59 71
 style set style_git_fg 251 255 234
 ```
 
-#### SSH host completion plugin (`examples/ssh_hosts.v`)
+#### SSH host completion plugin
 
 `ssh_hosts` provides tab completion for SSH hostnames. When you type `ssh <prefix>` and press Tab, it returns matching hosts gathered from `~/.ssh/config` and `~/.ssh/known_hosts`. It also supports `user@<prefix>` notation.
 
 ```sh
-cp examples/ssh_hosts.v ~/.vlsh/plugins/ssh_hosts.v
+plugins install ssh_hosts
 plugins reload
 ```
 
@@ -403,7 +408,7 @@ Sources read (automatically, no configuration needed):
 - `~/.ssh/config` — `Host` entries (wildcard patterns like `*` are skipped)
 - `~/.ssh/known_hosts` — all non-hashed entries (hashed `|1|…` lines are skipped)
 
-#### V module documentation plugin (`examples/v_man.v`)
+#### V module documentation plugin
 
 `vman` is a man-page style viewer for the official V module documentation at
 [modules.vlang.io](https://modules.vlang.io/). It fetches the HTML for any
@@ -412,7 +417,7 @@ standard-library module, strips the markup, and displays the result in `less`
 regular man page.
 
 ```sh
-cp examples/v_man.v ~/.vlsh/plugins/v_man.v
+plugins install v_man
 plugins reload
 ```
 
@@ -482,7 +487,7 @@ The status bar at the top shows `vlsh mux` on the left and the live pane count o
 
 **`mux`** – `enter(status_providers []string)` is the public entry point; internally uses `Mux`, `Pane`, `LayoutNode`, `InputHandler`
 
-**`plugins`** – `load() []Plugin`, `dispatch(…) bool`, `completions(loaded, input) []string`, `run_pre_hooks`, `run_post_hooks`, `prompt_segments(loaded) string`, `mux_status_binaries(loaded) []string`, `enable(name)`, `disable(name)`, `enable_all()`, `disable_all()`, `remote_available() ![]string`, `install(name) !`, `delete_plugin(name) !`
+**`plugins`** – `load() []Plugin`, `installed_list() []InstalledPlugin`, `available() []string`, `dispatch(…) bool`, `completions(loaded, input) []string`, `run_pre_hooks`, `run_post_hooks`, `prompt_segments(loaded) string`, `mux_status_binaries(loaded) []string`, `enable(name)`, `disable(name)`, `enable_all()`, `disable_all()`, `remote_plugin_names() ![]string`, `remote_versions(name) ![]string`, `latest_remote_version(name) !string`, `fetch_desc(name) !PluginDesc`, `install(name) !string`, `update_plugin(name) !string`, `delete_plugin(name) !`, `search_remote(query) ![]PluginDesc`
 
 
 ## DISCLAIMER

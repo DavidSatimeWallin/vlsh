@@ -1,3 +1,78 @@
+## 2026-02-20 — version 1.1.0
+
+### Features added
+
+**Versioned remote plugin structure**
+- The remote plugin repository now uses a folder-per-plugin layout:
+  `vlshcc/plugins/<name>/` contains a `DESC` metadata file (TOML: name,
+  author, email, description) and one subdirectory per semver release
+  (`v1.0.0/`, `v1.1.0/`, …), each holding the plugin's `.v` source file.
+- Locally, plugins are stored in `~/.vlsh/plugins/<name>/<version>/<name>.v`
+  (only the installed version is kept). Compiled binaries remain in the flat
+  `~/.vlsh/plugins/.bin/` directory as before.
+- Old flat `.v` files in `~/.vlsh/plugins/` are silently ignored; no
+  migration is required.
+
+**New and updated plugin subcommands**
+- `plugins list` now shows the installed semver version next to each name.
+- `plugins remote` now marks each installed plugin with its version and flags
+  when a newer version is available in the remote repository
+  (`[installed v1.0.0, update available: v1.1.0]`).
+- `plugins search <query>` (new) — replaces `plugins remote search`; searches
+  both the plugin name and the `description` field from the DESC file
+  (case-insensitive).
+- `plugins install <name>` now resolves and installs the latest semver version
+  and prints the installed version string (`git v1.1.0 installed`).
+- `plugins update [name]` (new) — with a name, updates that one plugin to the
+  latest remote version; without a name, updates every installed plugin.
+  Prints one status line per plugin (updated or already at latest). Reloads
+  plugins after any successful update.
+- `plugins delete <name>` now removes the entire plugin folder
+  (`os.rmdir_all`) instead of just the `.v` file.
+
+**New structs and helpers in `plugins/plugins.v`**
+- `PluginDesc { name, author, email, description string }` — holds metadata
+  parsed from a remote `DESC` file.
+- `InstalledPlugin { name, version, src string }` — holds the name, installed
+  semver version, and source path of a local plugin.
+- `Plugin` struct gains a `version string` field populated at load time.
+- New public functions: `installed_list()`, `remote_plugin_names()`,
+  `remote_versions()`, `latest_remote_version()`, `fetch_desc()`,
+  `update_plugin()`, `search_remote()`.
+- `install(name)` now returns the installed version string (`!string`).
+- `remote_available()` removed; replaced by `remote_plugin_names()`.
+- Semver ordering: `parse_semver` / `compare_semver` helpers sort version
+  strings using a `[3]int` fixed array.
+- TOML parsing: lightweight line-by-line `parse_desc` / `extract_toml_val`
+  helpers — no external library required.
+
+**Automatic plugin directory creation**
+- `~/.vlsh/plugins/` (and `~/.vlsh/plugins/.bin/`) are now created
+  automatically on startup if they do not exist.
+
+### Bugs fixed
+
+**GitHub API directory detection broken (`plugins remote`)**
+- V's JSON decoder does not correctly handle `@[json: 'type']` when the
+  JSON key is a language keyword, leaving the mapped field always empty.
+  Replaced with a check on `html_url.contains('/tree/')`, which is a
+  guaranteed GitHub API property for directory entries (files use `/blob/`).
+  This fixes `plugins remote` reporting "no remote plugins found" even when
+  the remote repository is reachable and correctly structured.
+
+### Documentation
+
+- `README.md` updated: plugin feature bullet, installation section
+  (v1.1.0 URLs), built-in commands table, shell-features plugins paragraph,
+  "How plugins work" section, managing-plugins command block, example plugin
+  install instructions, and module API summary.
+- `help plugins` updated: removed `plugins remote list` / `plugins remote
+  search`; added `plugins search <query>` and `plugins update [name]`;
+  updated descriptions for `plugins list` and `plugins remote`.
+- Version bumped to `1.1.0` in `vlsh.v` and `v.mod`.
+
+---
+
 ## 2026-02-19 — version 1.0.11
 
 ### Features added
@@ -27,6 +102,13 @@
 - Version bumped to `1.0.11` in `vlsh.v` and `v.mod`.
 - Packages rebuilt: `builds/vlsh_1.0.11_amd64.deb` and
   `builds/vlsh_1.0.11_amd64_linux`.
+
+### Documentation
+
+- `README.md` updated with install options for pre-compiled packages
+  (`.deb` and standalone binary), including a new *Installation* section
+  listing both build-from-source and pre-built package methods.
+- Removed the TODO section from `README.md`.
 
 ---
 

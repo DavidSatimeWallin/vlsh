@@ -12,7 +12,7 @@ import mux
 import plugins
 import utils
 
-const version = '1.0.11'
+const version = '1.1.0'
 
 fn pre_prompt() string {
 	mut current_dir := term.colorize(term.bold, '$os.getwd() ')
@@ -449,19 +449,19 @@ fn dispatch_cmd(cmd string, args []string, mut loaded_plugins []plugins.Plugin) 
 					println('plugins: ${loaded_plugins.len} loaded')
 				}
 				'list' {
-					all := plugins.available()
+					all := plugins.installed_list()
 					if all.len == 0 {
 						println('no plugins found in ~/.vlsh/plugins/')
 					} else {
 						dis := plugins.disabled()
-						for name in all {
-							if dis[name] {
-								println('${name}  [disabled]')
+						for ip in all {
+							if dis[ip.name] {
+								println('${ip.name} ${ip.version}  [disabled]')
 							} else {
 								for p in loaded_plugins {
-									if p.name == name {
+									if p.name == ip.name {
 										cmds_str := if p.commands.len > 0 { '  commands: ${p.commands.join(', ')}' } else { '' }
-										println('${term.bold(name)}${cmds_str}')
+										println('${term.bold(ip.name)} ${ip.version}${cmds_str}')
 										break
 									}
 								}
@@ -514,69 +514,110 @@ fn dispatch_cmd(cmd string, args []string, mut loaded_plugins []plugins.Plugin) 
 					}
 				}
 				'remote' {
-				subsubcmd := if args.len > 1 { args[1] } else { 'list' }
-				if subsubcmd == 'search' {
-					if args.len < 3 {
-						utils.fail('usage: plugins remote search <query>')
-						return 1
-					}
-					query := args[2].to_lower()
-					names := plugins.remote_available() or {
-						utils.fail(err.msg())
-						return 1
-					}
-					for name in names {
-						if name.to_lower().contains(query) {
-							println(name)
-						}
-					}
-				} else {
-					names := plugins.remote_available() or {
+					names := plugins.remote_plugin_names() or {
 						utils.fail(err.msg())
 						return 1
 					}
 					if names.len == 0 {
 						println('no remote plugins found')
 					} else {
-						local := plugins.available()
+						installed := plugins.installed_list()
+						mut inst_map := map[string]string{}
+						for ip in installed {
+							inst_map[ip.name] = ip.version
+						}
 						for name in names {
-							if name in local {
-								println('${term.bold(name)}  [installed]')
+							inst_ver := inst_map[name]
+							if inst_ver != '' {
+								latest := plugins.latest_remote_version(name) or { inst_ver }
+								if latest != inst_ver {
+									println('${term.bold(name)}  [installed ${inst_ver}, update available: ${latest}]')
+								} else {
+									println('${term.bold(name)}  [installed ${inst_ver}]')
+								}
 							} else {
 								println(name)
 							}
 						}
 					}
 				}
-			}
-			'install' {
-				if args.len < 2 {
-					utils.fail('usage: plugins install <name>')
-					return 1
+				'search' {
+					if args.len < 2 {
+						utils.fail('usage: plugins search <query>')
+						return 1
+					}
+					results := plugins.search_remote(args[1]) or {
+						utils.fail(err.msg())
+						return 1
+					}
+					if results.len == 0 {
+						println('no plugins found matching "${args[1]}"')
+					} else {
+						for desc in results {
+							println('${term.bold(desc.name)}  ${desc.description}')
+						}
+					}
 				}
-				name := args[1]
-				plugins.install(name) or {
-					utils.fail(err.msg())
-					return 1
+				'install' {
+					if args.len < 2 {
+						utils.fail('usage: plugins install <name>')
+						return 1
+					}
+					name := args[1]
+					inst_ver := plugins.install(name) or {
+						utils.fail(err.msg())
+						return 1
+					}
+					println('${name} ${inst_ver} installed — run "plugins reload" to activate it')
 				}
-				println('${name} installed — run "plugins reload" to activate it')
-			}
-			'delete' {
-				if args.len < 2 {
-					utils.fail('usage: plugins delete <name>')
-					return 1
+				'update' {
+					if args.len < 2 {
+						installed := plugins.installed_list()
+						if installed.len == 0 {
+							println('no plugins installed')
+						}
+						mut any_updated := false
+						for ip in installed {
+							new_ver := plugins.update_plugin(ip.name) or {
+								if err.msg().contains('already at latest') {
+									println('${ip.name}: already at latest (${ip.version})')
+								} else {
+									utils.fail('${ip.name}: ${err.msg()}')
+								}
+								continue
+							}
+							println('${ip.name}: updated to ${new_ver}')
+							any_updated = true
+						}
+						if any_updated {
+							loaded_plugins = plugins.load()
+						}
+					} else {
+						name := args[1]
+						new_ver := plugins.update_plugin(name) or {
+							utils.fail(err.msg())
+							return 1
+						}
+						println('${name}: updated to ${new_ver}')
+						loaded_plugins = plugins.load()
+					}
 				}
-				name := args[1]
-				plugins.delete_plugin(name) or {
-					utils.fail(err.msg())
-					return 1
+				'delete' {
+					if args.len < 2 {
+						utils.fail('usage: plugins delete <name>')
+						return 1
+					}
+					name := args[1]
+					plugins.delete_plugin(name) or {
+						utils.fail(err.msg())
+						return 1
+					}
+					loaded_plugins = loaded_plugins.filter(it.name != name)
+					println('${name} deleted')
 				}
-				loaded_plugins = loaded_plugins.filter(it.name != name)
-				println('${name} deleted')
-			}
-			else {
-				utils.fail('plugins: unknown subcommand "${subcmd}" (available: list, reload, enable, disable, remote, install, delete)')
-			}
+				else {
+					utils.fail('plugins: unknown subcommand "${subcmd}" (available: list, reload, enable, disable, remote, search, install, update, delete)')
+				}
 			}
 		}
 		'venv' {
