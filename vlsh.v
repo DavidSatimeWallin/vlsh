@@ -258,17 +258,7 @@ fn dispatch_cmd(cmd string, args []string, mut loaded_plugins []plugins.Plugin, 
 		}
 		'echo' {
 			clean_args, rfile, rappend := builtin_redirect(args)
-			mut parts := []string{}
-			for arg in clean_args {
-				if arg == '$0' {
-					parts << 'vlsh'
-				} else if arg.starts_with('$') {
-					parts << os.getenv(arg[1..])
-				} else {
-					parts << arg
-				}
-			}
-			output := parts.join(' ') + '\n'
+			output := clean_args.join(' ') + '\n'
 			if rfile != '' {
 				write_redirect(rfile, output, rappend) or { utils.fail(err.msg()) }
 			} else {

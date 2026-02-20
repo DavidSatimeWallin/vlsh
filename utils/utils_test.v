@@ -1,5 +1,72 @@
 module utils
 
+import os
+
+// ---------------------------------------------------------------------------
+// expand_vars
+// ---------------------------------------------------------------------------
+
+fn test_expand_vars_no_dollar_is_unchanged() {
+	assert expand_vars('hello world') == 'hello world'
+}
+
+fn test_expand_vars_dollar_question_mark() {
+	os.setenv('?', '42', true)
+	assert expand_vars('$?') == '42'
+	os.setenv('?', '0', true)
+}
+
+fn test_expand_vars_dollar_question_embedded() {
+	os.setenv('?', '1', true)
+	assert expand_vars('code=$?') == 'code=1'
+	os.setenv('?', '0', true)
+}
+
+fn test_expand_vars_regular_var() {
+	os.setenv('VLSH_TEST_X', 'hello', true)
+	assert expand_vars('\$VLSH_TEST_X') == 'hello'
+	os.unsetenv('VLSH_TEST_X')
+}
+
+fn test_expand_vars_var_with_literal_suffix() {
+	os.setenv('VLSH_TEST_X', 'foo', true)
+	assert expand_vars('\$VLSH_TEST_X!') == 'foo!'
+	os.unsetenv('VLSH_TEST_X')
+}
+
+fn test_expand_vars_digit_suffix_after_special_param() {
+	// $0? should expand $0 (shell binary) and keep ? as literal
+	result := expand_vars('$0?')
+	assert result.ends_with('?')
+	assert result.len > 1
+}
+
+fn test_expand_vars_multiple_vars_in_string() {
+	os.setenv('VLSH_TEST_A', 'hello', true)
+	os.setenv('VLSH_TEST_B', 'world', true)
+	assert expand_vars('\$VLSH_TEST_A \$VLSH_TEST_B') == 'hello world'
+	os.unsetenv('VLSH_TEST_A')
+	os.unsetenv('VLSH_TEST_B')
+}
+
+fn test_expand_vars_undefined_var_expands_to_empty() {
+	os.unsetenv('VLSH_UNDEF_TEST')
+	assert expand_vars('\$VLSH_UNDEF_TEST') == ''
+}
+
+fn test_expand_vars_unknown_dollar_sequence_kept_literal() {
+	assert expand_vars('$-') == '$-'
+}
+
+fn test_expand_vars_double_dollar_is_pid() {
+	result := expand_vars('$$')
+	assert result.int() > 0
+}
+
+fn test_expand_vars_dollar_at_end_of_string_kept_literal() {
+	assert expand_vars('hello$') == 'hello$'
+}
+
 // ---------------------------------------------------------------------------
 // parse_args
 // ---------------------------------------------------------------------------
@@ -77,6 +144,20 @@ fn test_parse_args_env_assign_stays_one_token() {
 	// KEY=VALUE must remain a single token so is_env_assign can detect it
 	result := parse_args('FOO=bar cmd')
 	assert result == ['FOO=bar', 'cmd']
+}
+
+fn test_parse_args_var_expansion() {
+	os.setenv('VLSH_TEST_GREET', 'hi', true)
+	result := parse_args('echo \$VLSH_TEST_GREET')
+	assert result == ['echo', 'hi']
+	os.unsetenv('VLSH_TEST_GREET')
+}
+
+fn test_parse_args_special_param_expansion() {
+	os.setenv('?', '5', true)
+	result := parse_args('echo $?')
+	assert result == ['echo', '5']
+	os.setenv('?', '0', true)
 }
 
 // ---------------------------------------------------------------------------

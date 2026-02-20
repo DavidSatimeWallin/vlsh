@@ -20,9 +20,60 @@ pub fn warn(input string) {
 	println(term.warn_message('WRN| ${input}'))
 }
 
+// expand_vars replaces $VAR references in s with their values.
+// Recognised forms (in order of precedence):
+//   $?  $!  $#          — single-char special parameters (looked up in env)
+//   $$                  — current process ID
+//   $0                  — shell binary name (os.args[0])
+//   $1–$9               — positional parameters (looked up in env)
+//   $[A-Za-z_][…]       — regular environment variables
+// Any other $X sequence is passed through unchanged.
+pub fn expand_vars(s string) string {
+	if !s.contains('$') {
+		return s
+	}
+	mut result := strings.new_builder(s.len)
+	mut i := 0
+	for i < s.len {
+		if s[i] == `$` && i + 1 < s.len {
+			next := s[i + 1]
+			if next == `?` || next == `!` || next == `#` {
+				result.write_string(os.getenv(s[i + 1..i + 2]))
+				i += 2
+			} else if next == `$` {
+				result.write_string(os.getpid().str())
+				i += 2
+			} else if next >= `0` && next <= `9` {
+				if next == `0` {
+					result.write_string(if os.args.len > 0 { os.args[0] } else { 'vlsh' })
+				} else {
+					result.write_string(os.getenv(s[i + 1..i + 2]))
+				}
+				i += 2
+			} else if (next >= `a` && next <= `z`) || (next >= `A` && next <= `Z`) || next == `_` {
+				mut j := i + 1
+				for j < s.len && (s[j].is_letter() || s[j].is_digit() || s[j] == `_`) {
+					j++
+				}
+				result.write_string(os.getenv(s[i + 1..j]))
+				i = j
+			} else {
+				// Unknown $X — keep the $ literally
+				result.write_u8(s[i])
+				i++
+			}
+		} else {
+			result.write_u8(s[i])
+			i++
+		}
+	}
+	return result.str()
+}
+
 // parse_args splits a command string into tokens, respecting single and
 // double quoted strings (which are kept as one token with quotes stripped).
-// Unquoted tokens that contain * or ? are glob-expanded against the filesystem;
+// Variable references ($VAR, $?, $0, etc.) are expanded in each token, then
+// unquoted tokens that contain * or ? are glob-expanded against the filesystem;
 // if no files match the pattern is passed through unchanged.
 pub fn parse_args(input string) []string {
 	mut args       := []string{}
@@ -39,7 +90,7 @@ pub fn parse_args(input string) []string {
 			has_quoted = true
 		} else if ch == ` ` && !in_single && !in_double {
 			if current.len > 0 {
-				args << glob_expand(current.str(), has_quoted)
+				args << glob_expand(expand_vars(current.str()), has_quoted)
 				current    = strings.new_builder(32)
 				has_quoted = false
 			}
@@ -48,7 +99,7 @@ pub fn parse_args(input string) []string {
 		}
 	}
 	if current.len > 0 {
-		args << glob_expand(current.str(), has_quoted)
+		args << glob_expand(expand_vars(current.str()), has_quoted)
 	}
 	return args
 }
