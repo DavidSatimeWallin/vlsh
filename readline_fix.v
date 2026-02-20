@@ -418,6 +418,13 @@ fn vlsh_completion(mut r Readline) {
 	if r.completion_list.len == 0 && r.completion_callback == unsafe { nil } {
 		return
 	}
+	// If the current input ends with '/' and we have a saved prefix from a
+	// previous cycling session, the user wants to explore inside the selected
+	// directory rather than continue cycling the old level.  Reset so that
+	// this tab press starts fresh from the current path.
+	if r.last_prefix_completion.len > 0 && r.current.len > 0 && r.current.last() == `/` {
+		vlsh_completion_clear(mut r)
+	}
 	prefix := if r.last_prefix_completion.len > 0 { r.last_prefix_completion } else { r.current }
 	if prefix.len == 0 {
 		return
