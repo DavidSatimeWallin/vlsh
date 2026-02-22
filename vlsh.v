@@ -2,7 +2,6 @@ module main
 
 import os
 import term
-import readline { Readline }
 
 import cfg
 import cmds
@@ -80,7 +79,7 @@ fn tab_complete(input string, loaded []plugins.Plugin) []string {
 }
 
 // load_history populates r.previous_lines from ~/.vlsh_history (last 5000 entries).
-fn load_history(mut r Readline) {
+fn load_history(mut r VlshReadline) {
 	hfile := os.home_dir() + '/.vlsh_history'
 	content := os.read_file(hfile) or { return }
 	lines := content.split('\n')
@@ -114,7 +113,7 @@ fn main() {
 
 	term.clear()
 	mut loaded_plugins := plugins.load()
-	mut r := Readline{}
+	mut r := VlshReadline{}
 	r.completion_callback = fn [mut loaded_plugins](input string) []string {
 		return tab_complete(input, loaded_plugins)
 	}

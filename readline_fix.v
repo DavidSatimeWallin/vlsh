@@ -11,6 +11,20 @@ import readline { Readline }
 import term
 import os
 
+// VlshReadline wraps the stdlib Readline and adds the extra fields needed for
+// Ctrl+R history search.  The underlying vlib Readline struct omits these on
+// some platforms (e.g. macOS), so we carry them here instead.
+pub struct VlshReadline {
+	Readline
+pub mut:
+	search_query               []rune
+	search_match_index         int
+	search_mode                bool
+	search_saved_prompt        string
+	search_saved_prompt_offset int
+	search_saved_current       []rune
+}
+
 fn C.raise(sig i32)
 fn C.getppid() i32
 
@@ -108,7 +122,7 @@ fn vlsh_shift_cursor(xpos int, yoffset int) {
 //  2. If no usable history entry is found, fall back to the completion
 //     callback (the same engine that drives Tab), and use its first result as
 //     the suggestion.
-fn vlsh_get_suggestion(r Readline) []rune {
+fn vlsh_get_suggestion(r VlshReadline) []rune {
 	if r.current.len == 0 {
 		return []rune{}
 	}
@@ -155,7 +169,7 @@ fn vlsh_get_suggestion(r Readline) []rune {
 	return []rune{}
 }
 
-fn vlsh_refresh_line(mut r Readline) {
+fn vlsh_refresh_line(mut r VlshReadline) {
 	mut end_of_input := [0, 0]
 	last_prompt_line := if r.prompt.contains('\n') {
 		r.prompt.all_after_last('\n')
@@ -193,7 +207,7 @@ fn vlsh_refresh_line(mut r Readline) {
 
 // ── key analysis ──────────────────────────────────────────────────────────────
 
-fn vlsh_analyse_escape(r Readline) VlshAction {
+fn vlsh_analyse_escape(r VlshReadline) VlshAction {
 	c2 := r.read_char() or { return .nothing }
 	if u8(c2) != `[` {
 		return .nothing
@@ -238,7 +252,7 @@ fn vlsh_analyse_escape(r Readline) VlshAction {
 	}
 }
 
-fn vlsh_analyse(r Readline, c int) (VlshAction, int) {
+fn vlsh_analyse(r VlshReadline, c int) (VlshAction, int) {
 	if c > 255 {
 		return VlshAction.insert_character, c
 	}
@@ -267,12 +281,12 @@ fn vlsh_analyse(r Readline, c int) (VlshAction, int) {
 
 // ── editing operations ────────────────────────────────────────────────────────
 
-fn vlsh_completion_clear(mut r Readline) {
+fn vlsh_completion_clear(mut r VlshReadline) {
 	r.last_prefix_completion.clear()
 	r.last_completion_offset = 0
 }
 
-fn vlsh_eof(mut r Readline) bool {
+fn vlsh_eof(mut r VlshReadline) bool {
 	r.previous_lines.insert(1, r.current)
 	r.cursor = r.current.len
 	if r.is_tty {
@@ -281,7 +295,7 @@ fn vlsh_eof(mut r Readline) bool {
 	return true
 }
 
-fn vlsh_insert_character(mut r Readline, c int) {
+fn vlsh_insert_character(mut r VlshReadline, c int) {
 	if !r.overwrite || r.cursor == r.current.len {
 		r.current.insert(r.cursor, c)
 	} else {
@@ -294,7 +308,7 @@ fn vlsh_insert_character(mut r Readline, c int) {
 }
 
 // vlsh_delete_character handles the Backspace key (0x08).
-fn vlsh_delete_character(mut r Readline) {
+fn vlsh_delete_character(mut r VlshReadline) {
 	if r.cursor <= 0 {
 		return
 	}
@@ -304,7 +318,7 @@ fn vlsh_delete_character(mut r Readline) {
 	vlsh_completion_clear(mut r)
 }
 
-fn vlsh_suppr_character(mut r Readline) {
+fn vlsh_suppr_character(mut r VlshReadline) {
 	if r.cursor >= r.current.len {
 		return
 	}
@@ -313,7 +327,7 @@ fn vlsh_suppr_character(mut r Readline) {
 	vlsh_completion_clear(mut r)
 }
 
-fn vlsh_delete_word_left(mut r Readline) {
+fn vlsh_delete_word_left(mut r VlshReadline) {
 	if r.cursor == 0 {
 		return
 	}
@@ -344,14 +358,14 @@ fn vlsh_delete_word_left(mut r Readline) {
 	vlsh_completion_clear(mut r)
 }
 
-fn vlsh_delete_line(mut r Readline) {
+fn vlsh_delete_line(mut r VlshReadline) {
 	r.current = []
 	r.cursor = 0
 	vlsh_refresh_line(mut r)
 	vlsh_completion_clear(mut r)
 }
 
-fn vlsh_commit_line(mut r Readline) bool {
+fn vlsh_commit_line(mut r VlshReadline) bool {
 	r.previous_lines.insert(1, r.current)
 	r.cursor = r.current.len
 	if r.is_tty {
@@ -363,14 +377,14 @@ fn vlsh_commit_line(mut r Readline) bool {
 	return true
 }
 
-fn vlsh_move_cursor_left(mut r Readline) {
+fn vlsh_move_cursor_left(mut r VlshReadline) {
 	if r.cursor > 0 {
 		r.cursor--
 		vlsh_refresh_line(mut r)
 	}
 }
 
-fn vlsh_move_cursor_right(mut r Readline) {
+fn vlsh_move_cursor_right(mut r VlshReadline) {
 	if r.cursor < r.current.len {
 		r.cursor++
 		vlsh_refresh_line(mut r)
@@ -384,12 +398,12 @@ fn vlsh_move_cursor_right(mut r Readline) {
 	}
 }
 
-fn vlsh_move_cursor_start(mut r Readline) {
+fn vlsh_move_cursor_start(mut r VlshReadline) {
 	r.cursor = 0
 	vlsh_refresh_line(mut r)
 }
 
-fn vlsh_move_cursor_end(mut r Readline) {
+fn vlsh_move_cursor_end(mut r VlshReadline) {
 	if r.cursor == r.current.len {
 		suggestion := vlsh_get_suggestion(r)
 		if suggestion.len > 0 {
@@ -408,7 +422,7 @@ fn vlsh_is_break_character(c string) bool {
 	return break_characters.contains(c)
 }
 
-fn vlsh_move_cursor_word_left(mut r Readline) {
+fn vlsh_move_cursor_word_left(mut r VlshReadline) {
 	if r.cursor > 0 {
 		for r.cursor > 0 && vlsh_is_break_character(r.current[r.cursor - 1].str()) {
 			r.cursor--
@@ -420,7 +434,7 @@ fn vlsh_move_cursor_word_left(mut r Readline) {
 	}
 }
 
-fn vlsh_move_cursor_word_right(mut r Readline) {
+fn vlsh_move_cursor_word_right(mut r VlshReadline) {
 	if r.cursor < r.current.len {
 		for r.cursor < r.current.len && vlsh_is_break_character(r.current[r.cursor].str()) {
 			r.cursor++
@@ -432,7 +446,7 @@ fn vlsh_move_cursor_word_right(mut r Readline) {
 	}
 }
 
-fn vlsh_history_previous(mut r Readline) {
+fn vlsh_history_previous(mut r VlshReadline) {
 	if r.search_index + 2 >= r.previous_lines.len {
 		return
 	}
@@ -450,7 +464,7 @@ fn vlsh_history_previous(mut r Readline) {
 	}
 }
 
-fn vlsh_history_next(mut r Readline) {
+fn vlsh_history_next(mut r VlshReadline) {
 	if r.search_index <= 0 {
 		return
 	}
@@ -460,11 +474,11 @@ fn vlsh_history_next(mut r Readline) {
 	vlsh_refresh_line(mut r)
 }
 
-fn vlsh_switch_overwrite(mut r Readline) {
+fn vlsh_switch_overwrite(mut r VlshReadline) {
 	r.overwrite = !r.overwrite
 }
 
-fn vlsh_cancel_line(mut r Readline) bool {
+fn vlsh_cancel_line(mut r VlshReadline) bool {
 	// Print visual feedback then signal cancellation via a sentinel rune.
 	// The sentinel (rune 3, i.e. the Ctrl+C character) is detected in
 	// vlsh_read_line to return error('cancelled') so main() can re-prompt.
@@ -474,13 +488,13 @@ fn vlsh_cancel_line(mut r Readline) bool {
 	return true
 }
 
-fn vlsh_clear_screen(mut r Readline) {
+fn vlsh_clear_screen(mut r VlshReadline) {
 	term.set_cursor_position(x: 1, y: 1)
 	term.erase_clear()
 	vlsh_refresh_line(mut r)
 }
 
-fn vlsh_suspend(mut r Readline) {
+fn vlsh_suspend(mut r VlshReadline) {
 	r.disable_raw_mode()
 	is_standalone := os.getenv('VCHILD') != 'true'
 	if !is_standalone {
@@ -494,7 +508,7 @@ fn vlsh_suspend(mut r Readline) {
 	vlsh_refresh_line(mut r)
 }
 
-fn vlsh_completion(mut r Readline) {
+fn vlsh_completion(mut r VlshReadline) {
 	if r.completion_list.len == 0 && r.completion_callback == unsafe { nil } {
 		return
 	}
@@ -537,7 +551,7 @@ fn vlsh_completion(mut r Readline) {
 
 // ── history search (Ctrl+R) ───────────────────────────────────────────────────
 
-fn vlsh_do_search(mut r Readline) {
+fn vlsh_do_search(mut r VlshReadline) {
 	query := r.search_query.string()
 	if query.len > 0 {
 		mut match_count := 0
@@ -570,7 +584,7 @@ fn vlsh_do_search(mut r Readline) {
 	vlsh_refresh_line(mut r)
 }
 
-fn vlsh_start_history_search(mut r Readline) {
+fn vlsh_start_history_search(mut r VlshReadline) {
 	r.search_mode = true
 	r.search_query = []rune{}
 	r.search_match_index = 0
@@ -580,7 +594,7 @@ fn vlsh_start_history_search(mut r Readline) {
 	vlsh_do_search(mut r)
 }
 
-fn vlsh_execute_search(mut r Readline, a VlshAction, c int) bool {
+fn vlsh_execute_search(mut r VlshReadline, a VlshAction, c int) bool {
 	match a {
 		.insert_character {
 			r.search_query << rune(c)
@@ -624,7 +638,7 @@ fn vlsh_execute_search(mut r Readline, a VlshAction, c int) bool {
 	return false
 }
 
-fn vlsh_execute(mut r Readline, a VlshAction, c int) bool {
+fn vlsh_execute(mut r VlshReadline, a VlshAction, c int) bool {
 	match a {
 		.eof         { return vlsh_eof(mut r) }
 		.cancel_line { return vlsh_cancel_line(mut r) }
@@ -662,7 +676,7 @@ fn vlsh_execute(mut r Readline, a VlshAction, c int) bool {
 
 // vlsh_read_line is a drop-in replacement for r.read_line(prompt) that fixes
 // the Backspace-at-column-0 bug without modifying vlib.
-fn vlsh_read_line(mut r Readline, prompt string) !string {
+fn vlsh_read_line(mut r VlshReadline, prompt string) !string {
 	r.current = []rune{}
 	r.cursor = 0
 	r.prompt = prompt

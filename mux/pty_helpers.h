@@ -1,7 +1,11 @@
 #ifndef VLSH_PTY_HELPERS_H
 #define VLSH_PTY_HELPERS_H
 
+#if defined(__APPLE__)
+#include <util.h>
+#else
 #include <pty.h>
+#endif
 #include <termios.h>
 #include <unistd.h>
 #include <stdlib.h>
