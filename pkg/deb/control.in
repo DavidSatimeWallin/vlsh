@@ -1,8 +1,8 @@
 Package: vlsh
 Version: VERSION
 Architecture: ARCH
-Maintainer: David Satime Wallin <david@dwall.in>
-Homepage: https://github.com/dvwallin/vlsh
+Maintainer: David Satime Wallin <sarmonsiill@tilde.guru>
+Homepage: https://github.com/vlshcc/vlsh
 Section: shells
 Priority: optional
 Installed-Size: INSTALLED_SIZE

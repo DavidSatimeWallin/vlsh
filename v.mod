@@ -1,7 +1,7 @@
 Module {
 	name: 'vlsh'
 	description: 'V Lang SHell'
-	version: '1.1.7'
+	version: '1.1.7.1'
 	license: 'MIT'
 	dependencies: []
 }

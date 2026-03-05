@@ -1,3 +1,34 @@
+## 2026-03-05 — version 1.1.7.1
+
+### Platform support
+
+**DragonFlyBSD compatibility**
+- `mux/pty_helpers.h`: added `__DragonFly__` to the FreeBSD preprocessor guard
+  so that `<libutil.h>` is used for `openpty`/`forkpty` on DragonFlyBSD (same
+  header as FreeBSD).
+- `pkg/build.sh`: added `--dragonfly` cross-compilation flag. The script
+  automatically downloads the DragonFlyBSD 6.4.2 ISO (~260 MB), extracts the
+  sysroot (headers and libraries), compiles V's bundled Boehm GC for the target,
+  and cross-compiles with clang + lld. The sysroot is cached at
+  `~/.vmodules/dragonflybsdroot` for subsequent builds.
+- `pkg/dragonfly/`: added DPorts package files (`Makefile`, `pkg-descr`,
+  `distinfo`) for building a native package directly on DragonFlyBSD, using the
+  same format as FreeBSD ports.
+
+### Housekeeping
+
+- Maintainer email updated to `sarmonsiill@tilde.guru` throughout all packaging
+  files (`pkg/deb/control.in`, `pkg/build.sh`, `pkg/freebsd/Makefile`,
+  `pkg/dragonfly/Makefile`).
+- Repository URL updated from `https://github.com/dvwallin/vlsh` to
+  `https://github.com/vlshcc/vlsh` in `README.md`, `pkg/build.sh`,
+  `pkg/deb/control.in`, and `pkg/rpm/vlsh.spec.in`.
+
+### Version bumps
+- Version bumped to `1.1.7.1` in `vlsh.v`, `v.mod`, and `README.md`.
+
+---
+
 ## 2026-03-05 — version 1.1.7
 
 ### Bug fixes

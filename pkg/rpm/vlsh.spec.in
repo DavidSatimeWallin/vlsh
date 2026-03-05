@@ -3,7 +3,7 @@ Version:        VERSION
 Release:        1%{?dist}
 Summary:        V Lang SHell — a shell written in V
 License:        MIT
-URL:            https://github.com/dvwallin/vlsh
+URL:            https://github.com/vlshcc/vlsh
 
 %description
 vlsh is an interactive shell written in the V programming language.

@@ -3,7 +3,7 @@
 
 #if defined(__APPLE__)
 #include <util.h>
-#elif defined(__FreeBSD__)
+#elif defined(__FreeBSD__) || defined(__DragonFly__)
 #include <libutil.h>
 #else
 #include <pty.h>
