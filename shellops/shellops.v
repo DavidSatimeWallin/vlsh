@@ -3,10 +3,6 @@ module shellops
 import os
 import strings
 
-// venv_registry is the env-var key that stores the colon-separated list of
-// session-managed variable names.
-pub const venv_registry = '__VLSH_VENV'
-
 // ChainPart represents one command in a &&/||/; chain together with the
 // operator that precedes it (empty string for the first command).
 pub struct ChainPart {
@@ -118,26 +114,3 @@ pub fn write_redirect(path string, content string, append_mode bool) ! {
 	f.close()
 }
 
-// venv_tracked returns the list of session-managed variable names.
-pub fn venv_tracked() []string {
-	reg := os.getenv(venv_registry)
-	if reg == '' { return []string{} }
-	return reg.split(':').filter(it.len > 0)
-}
-
-// venv_track marks key as a session-managed variable.
-pub fn venv_track(key string) {
-	mut keys := venv_tracked()
-	if key !in keys { keys << key }
-	os.setenv(venv_registry, keys.join(':'), true)
-}
-
-// venv_untrack removes key from the session-managed variable list.
-pub fn venv_untrack(key string) {
-	keys := venv_tracked().filter(it != key)
-	if keys.len == 0 {
-		os.unsetenv(venv_registry)
-	} else {
-		os.setenv(venv_registry, keys.join(':'), true)
-	}
-}

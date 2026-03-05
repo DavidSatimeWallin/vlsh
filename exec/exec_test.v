@@ -1,7 +1,6 @@
 module exec
 
 import os
-import cfg
 
 // ---------------------------------------------------------------------------
 // norm_pipe
@@ -121,7 +120,6 @@ fn test_expand_tilde_tilde_slash() {
 }
 
 fn test_expand_tilde_embedded_tilde_unchanged() {
-	// A ~ in the middle of a path is not expanded
 	assert expand_tilde('/foo/~/bar') == '/foo/~/bar'
 }
 
@@ -215,7 +213,6 @@ fn test_parse_redirect_no_stdin_file_when_absent() {
 }
 
 fn test_parse_redirect_stdin_strips_both_tokens() {
-	// '<' and the filename are both removed from args
 	args, _, _, stdin_file := parse_redirect(['wc', '-l', '<', '/tmp/data.txt'])
 	assert args       == ['wc', '-l']
 	assert stdin_file == '/tmp/data.txt'
@@ -226,25 +223,9 @@ fn test_parse_redirect_stdin_strips_both_tokens() {
 // ---------------------------------------------------------------------------
 
 fn test_find_v_exe_finds_v_binary() {
-	// v must be installed for this test suite to run at all
-	result := find_v_exe([])
+	result := find_v_exe()
 	assert result != '', 'v binary not found in PATH'
 	assert result.ends_with('/v')
-}
-
-fn test_find_v_exe_prefers_configured_paths() {
-	// Seed a cfg path that contains a known binary (/usr/bin/ls → pretend it's "v")
-	// We just verify that configured paths are searched before system PATH
-	// by passing a non-existent dir: should still fall through to system PATH
-	result := find_v_exe(['/this/path/does/not/exist'])
-	assert result != '', 'should fall through to system PATH'
-}
-
-fn test_find_v_exe_empty_string_on_no_v() {
-	// Passing only a dummy path with no v binary → empty string result
-	result := find_v_exe(['/this/path/does/not/exist/at/all/xyz'])
-	// v is in the system PATH, so this still finds it; just verify it returns a string
-	assert result.len >= 0 // always passes — confirms no panic
 }
 
 // ---------------------------------------------------------------------------
@@ -252,7 +233,6 @@ fn test_find_v_exe_empty_string_on_no_v() {
 // ---------------------------------------------------------------------------
 
 fn test_use_v_run_sets_fullcmd_to_v() {
-	// Create a temporary .vsh file to test with
 	pid := os.getpid()
 	tmp := '/tmp/vlsh_test_script_${pid}.vsh'
 	os.write_file(tmp, '#!/usr/bin/env -S v\nprintln("hello")\n') or { assert false, err.msg(); return }
@@ -261,7 +241,6 @@ fn test_use_v_run_sets_fullcmd_to_v() {
 	mut c := Cmd_object{
 		cmd:  tmp,
 		args: [],
-		cfg:  cfg.Cfg{ paths: [] },
 	}
 	c.find_exe() or { assert false, err.msg(); return }
 	assert c.fullcmd.ends_with('/v'), 'fullcmd should be the v binary, got: ${c.fullcmd}'
@@ -279,10 +258,8 @@ fn test_use_v_run_preserves_script_args() {
 	mut c := Cmd_object{
 		cmd:  tmp,
 		args: ['--flag', 'value'],
-		cfg:  cfg.Cfg{ paths: [] },
 	}
 	c.find_exe() or { assert false, err.msg(); return }
-	// args should be: ['run', tmp, '--flag', 'value']
 	assert c.args[0] == 'run'
 	assert c.args[1] == tmp
 	assert c.args[2] == '--flag'
@@ -294,7 +271,6 @@ fn test_use_v_run_preserves_script_args() {
 // ---------------------------------------------------------------------------
 
 fn test_find_exe_absolute_path_resolved() {
-	// Create a tiny executable in /tmp and verify find_exe resolves it directly
 	pid := os.getpid()
 	tmp_exe := '/tmp/vlsh_test_exe_${pid}'
 	os.write_file(tmp_exe, '#!/bin/sh\necho hi\n') or { assert false, err.msg(); return }
@@ -304,8 +280,25 @@ fn test_find_exe_absolute_path_resolved() {
 	mut c := Cmd_object{
 		cmd:  tmp_exe,
 		args: [],
-		cfg:  cfg.Cfg{ paths: [] },
 	}
 	c.find_exe() or { assert false, err.msg(); return }
 	assert c.fullcmd == tmp_exe
+}
+
+// ---------------------------------------------------------------------------
+// get_search_paths
+// ---------------------------------------------------------------------------
+
+fn test_get_search_paths_returns_path_entries() {
+	paths := get_search_paths()
+	assert paths.len > 0
+}
+
+fn test_get_search_paths_falls_back_when_empty() {
+	old := os.getenv('PATH')
+	os.setenv('PATH', '', true)
+	defer { os.setenv('PATH', old, true) }
+	paths := get_search_paths()
+	assert '/usr/bin' in paths
+	assert '/bin' in paths
 }

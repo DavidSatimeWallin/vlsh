@@ -23,14 +23,15 @@ pub fn help(version string, args []string) {
 		HelpEntry{'cd',      'Change directory; ~ and ~/path are expanded to \$HOME.'},
 		HelpEntry{'echo',    'Print arguments, expanding \$VAR and \$0; supports > / >>.'},
 		HelpEntry{'exit',    'Exit the shell.'},
+		HelpEntry{'export',  'Set environment variables (export KEY=VALUE).'},
 		HelpEntry{'help',    'Displays this message. Use "help <cmd>" for details.'},
 		HelpEntry{'ls',      'List directory contents (built-in colorised view).'},
 		HelpEntry{'mux',     'Enter multiplexer mode (split panes, Ctrl+V prefix).'},
 		HelpEntry{'ocp',     'Copy, overriding an existing destination file.'},
-		HelpEntry{'path',    'Manage PATH entries (list / add <dir> / remove <dir>).'},
 		HelpEntry{'plugins', 'Manage plugins (list / enable / disable / install / delete / remote).'},
+		HelpEntry{'source',  'Execute commands from a file in the current session.'},
 		HelpEntry{'style',   'Manage prompt colors (list / set <key> <r> <g> <b>).'},
-		HelpEntry{'venv',    'Manage session environment variables (list / add / rm).'},
+		HelpEntry{'unset',   'Remove environment variables (unset KEY [KEY...]).'},
 		HelpEntry{'version', 'Print the vlsh version.'},
 	]
 	for e in entries {
@@ -96,12 +97,32 @@ fn help_sub(cmd string) {
 			println('')
 			println('  ${term.bold('ocp')} <src> <dst>   Copy src to dst, overriding if dst exists.')
 		}
-		'path' {
-			println('${term.bold('path')} - Manage PATH entries')
+		'export' {
+			println('${term.bold('export')} - Set environment variables')
 			println('')
-			println('  ${term.bold('path list')}           List all directories in PATH.')
-			println('  ${term.bold('path add')} <dir>      Add dir to PATH.')
-			println('  ${term.bold('path remove')} <dir>   Remove dir from PATH.')
+			println('  ${term.bold('export')}                   List all environment variables.')
+			println('  ${term.bold('export')} KEY=VALUE         Set an environment variable.')
+			println('  ${term.bold('export')} KEY=VALUE K2=V2   Set multiple variables at once.')
+			println('  ${term.bold('export')} KEY               No-op (variable already inherited).')
+			println('')
+			println('Variables set with export persist for the lifetime of the shell session')
+			println('and are inherited by child processes. Use in ~/.vlshrc to set PATH:')
+			println('')
+			println('  export PATH="/opt/bin:\$PATH"')
+		}
+		'unset' {
+			println('${term.bold('unset')} - Remove environment variables')
+			println('')
+			println('  ${term.bold('unset')} KEY [KEY...]   Unset one or more environment variables.')
+		}
+		'source', '.' {
+			println('${term.bold('source')} - Execute commands from a file')
+			println('')
+			println('  ${term.bold('source')} <file>   Read file line-by-line and execute each line.')
+			println('  ${term.bold('.')} <file>        Same as source.')
+			println('')
+			println('Lines starting with # are treated as comments and skipped.')
+			println('Returns the exit code of the last executed line.')
 		}
 		'plugins' {
 			println('${term.bold('plugins')} - Manage plugins')
@@ -165,21 +186,6 @@ fn help_sub(cmd string) {
 			println('Each pane retains up to 1000 lines of scrollback history.')
 			println('An orange indicator in the top-right corner shows scroll position.')
 			println('Panes close automatically when their shell process exits.')
-		}
-		'venv' {
-			println('${term.bold('venv')} - Manage session environment variables')
-			println('')
-			println('  ${term.bold('venv list')}                List all session variables and their values.')
-			println('  ${term.bold('venv add')} <NAME> <value>  Set a variable for the current session.')
-			println('  ${term.bold('venv rm')} <NAME>           Unset a session variable.')
-			println('')
-			println('Variables set with venv persist for the lifetime of the shell session.')
-			println('Use the VAR=value prefix syntax for one-shot variables (single command only).')
-			println('')
-			println('Examples:')
-			println('  venv add EDITOR nvim')
-			println('  venv add GOPATH ~/go')
-			println('  venv rm EDITOR')
 		}
 		'version' {
 			println('${term.bold('version')} - Print version')

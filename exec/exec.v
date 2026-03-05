@@ -2,7 +2,6 @@ module exec
 
 import os
 
-import cfg
 import utils
 
 // C signal API — used to protect vlsh from SIGINT while a child process runs.
@@ -10,76 +9,17 @@ fn C.signal(signum int, handler voidptr) voidptr
 
 pub struct Cmd_object{
 	pub mut:
-	/*
-	cmd is the first ,iven argument which
-	we will consider to be an application
-	or alias to be executed.
-	*/
 	cmd						string
-	/*
-	fullcmd is the joint string of the found
-	path leading to the application and the
-	first argument passed in (cmd).
-	*/
 	fullcmd					string
-	/*
-	args will be all of the following args
-	sent [1..]. This will break if we find
-	a pipe sign |.
-	*/
 	args					[]string
-	/*
-	path is the first found path in paths
-	containing an executable with the same
-	name as cmd (first arg).
-	*/
 	path					string
-	/*
-	cfg is the config object in cfg.v
-	*/
-	cfg						cfg.Cfg
-	/*
-	input is only used when handling pipes.
-	this is a placeholder for output captured
-	from the past command in the pipe chain.
-	*/
+	aliases					map[string]string
 	input					string
-	/*
-	set_redirect_stdio is only used when
-	handling pipes. it's used in combination
-	with intercept_stdio to send output
-	along to next command as input.
-	*/
 	set_redirect_stdio		bool
-	/*
-	intercept_stdio is only used when handling
-	pipes. it's to know if we should slurp the
-	output from a command and set it as the
-	input of the next command in the pipe chain.
-	*/
 	intercept_stdio			bool
-	/*
-	next_pipe_index is used to know which command
-	in the pipe chain to execute next. if -1
-	then it's the last command in the chain.
-	*/
 	next_pipe_index			int
-	/*
-	redirect_file is the path to write stdout to when
-	the command uses > or >> output redirection.
-	Empty string means no redirection.
-	*/
 	redirect_file			string
-	/*
-	redirect_append controls whether > (false, truncate)
-	or >> (true, append) semantics are used.
-	*/
 	redirect_append			bool
-	/*
-	stdin_file is the path to read stdin from when
-	the command uses < input redirection.
-	Empty string means no redirection.
-	*/
 	stdin_file				string
 }
 
@@ -242,7 +182,7 @@ fn (mut t Task) walk_pipes() {
 		obj := Cmd_object{
 			cmd:                cmd,
 			args:               args,
-			cfg:                t.cmd.cfg,
+			aliases:            t.cmd.aliases,
 			intercept_stdio:    effective_intercept,
 			set_redirect_stdio: effective_redirect_out,
 			next_pipe_index:    next_index,
@@ -402,11 +342,11 @@ fn (mut t Task) run(c Cmd_object) (int) {
 }
 
 fn (mut t Task) handle_aliases() {
-	if alias_key_exists(t.cmd.cmd, t.cmd.cfg.aliases) {
-		alias_split := t.cmd.cfg.aliases[t.cmd.cmd].split(' ')
+	if alias_key_exists(t.cmd.cmd, t.cmd.aliases) {
+		alias_split := t.cmd.aliases[t.cmd.cmd].split(' ')
 		t.cmd.cmd = alias_split[0]
 		t.cmd.args << alias_split[1..]
-		utils.debug('found $t.cmd.cmd in $t.cmd.cfg.aliases')
+		utils.debug('found $t.cmd.cmd in $t.cmd.aliases')
 		utils.debug('will try to run $t.cmd.cmd with $t.cmd.args')
 	}
 }
@@ -422,11 +362,15 @@ fn alias_key_exists(key string, aliases map[string]string) bool {
 	return false
 }
 
+fn get_search_paths() []string {
+	paths := os.getenv('PATH').split(':').filter(it.len > 0)
+	if paths.len > 0 { return paths }
+	return ['/usr/local/bin', '/usr/bin', '/bin']
+}
+
 fn (mut c Cmd_object) find_exe() ! {
-	// Expand ~ in the command itself (e.g. ~/bin/myscript)
 	expanded_cmd := expand_tilde(c.cmd)
 
-	// Direct paths: absolute (/foo/bar) or explicitly relative (./foo, ../foo).
 	is_direct := expanded_cmd.starts_with('/') ||
 	             expanded_cmd.starts_with('./') ||
 	             expanded_cmd.starts_with('../')
@@ -444,7 +388,6 @@ fn (mut c Cmd_object) find_exe() ! {
 		return
 	}
 
-	// Bare .vsh filename without a path prefix: check the current directory.
 	if expanded_cmd.ends_with('.vsh') {
 		rel := './' + expanded_cmd
 		if !os.exists(rel) {
@@ -454,54 +397,29 @@ fn (mut c Cmd_object) find_exe() ! {
 		return
 	}
 
-	// Search the configured PATH directories.
-	mut trimmed_needle := ''
-	for path in c.cfg.paths {
-		trimmed_needle = c.cmd.replace(path, '').trim_left('/')
-		utils.debug('looking for $c.cmd in $path')
-		full := [path, trimmed_needle].join('/')
+	search_paths := get_search_paths()
+	for path in search_paths {
+		full := '${path}/${c.cmd}'
 		if os.exists(full) {
-			utils.debug('found $trimmed_needle in $path')
 			if full.ends_with('.vsh') {
 				c.use_v_run(full)!
 				return
 			}
 			c.fullcmd = full
 			c.path    = path
-			c.cmd     = trimmed_needle
 			return
 		}
 	}
 
-	// Failsafe: if configured PATH is empty, try standard system paths
-	// so the user cannot be locked out of running commands.
-	if c.cfg.paths.len == 0 {
-		utils.warn('PATH is empty or misconfigured -- using fallback paths: ${cfg.fallback_paths}')
-		for path in cfg.fallback_paths {
-			if !os.exists(path) { continue }
-			full := [path, c.cmd].join('/')
-			if os.exists(full) {
-				c.fullcmd = full
-				c.path    = path
-				return
-			}
-		}
-	}
-
-	if trimmed_needle == '' {
-		trimmed_needle = c.cmd
-	}
-
 	return error(
-		'$trimmed_needle not found in defined aliases or in \$PATH
-        \$PATH: $c.cfg.paths'
+		'${c.cmd} not found in defined aliases or in \$PATH'
 	)
 }
 
 // use_v_run configures the command to execute a .vsh script via `v run`.
 // The original args are preserved and appended after `run <vsh_path>`.
 fn (mut c Cmd_object) use_v_run(vsh_path string) ! {
-	v_exe := find_v_exe(c.cfg.paths)
+	v_exe := find_v_exe()
 	if v_exe == '' {
 		return error('v: interpreter not found in PATH (required to run .vsh scripts)')
 	}
@@ -511,13 +429,8 @@ fn (mut c Cmd_object) use_v_run(vsh_path string) ! {
 	c.fullcmd = v_exe
 }
 
-// find_v_exe locates the V compiler/interpreter binary.
-// It searches vlsh-configured paths first, then falls back to the system PATH.
-fn find_v_exe(cfg_paths []string) string {
-	mut all_paths := cfg_paths.clone()
-	all_paths << os.getenv('PATH').split(':')
-	for dir in all_paths {
-		if dir == '' { continue }
+fn find_v_exe() string {
+	for dir in get_search_paths() {
 		full := dir + '/v'
 		if os.exists(full) { return full }
 	}

@@ -36,8 +36,7 @@ to read, modify, and extend.
   VT100 sequences so editors like `vim` and `nano` work correctly inside panes.
 - **Native `.vsh` script support** — execute V shell scripts directly without
   invoking `v run` manually
-- **Session environment variables** — `venv add/rm/list` for temporary
-  per-session variable management
+- **POSIX environment variables** — `export`, `unset`, and `VAR=val cmd` prefix
 - **Theming** — prompt and UI colours configurable via `style set` and `~/.vlshrc`
 
 
@@ -45,14 +44,14 @@ to read, modify, and extend.
 
 ### Pre-built packages (recommended)
 
-The latest release is **v1.1.5.2**. Pre-built packages for 64-bit Linux are
+The latest release is **v1.1.6**. Pre-built packages for 64-bit Linux are
 available on the [releases page](https://github.com/vlshcc/vlsh/releases).
 
 **Debian / Ubuntu — install via `.deb`:**
 
 ```sh
-curl -LO https://github.com/vlshcc/vlsh/releases/download/v1.1.5.2/vlsh_1.1.5.2_amd64.deb
-sudo dpkg -i vlsh_1.1.5.2_amd64.deb
+curl -LO https://github.com/vlshcc/vlsh/releases/download/v1.1.6/vlsh_1.1.6_amd64.deb
+sudo dpkg -i vlsh_1.1.6_amd64.deb
 ```
 
 The package installs the binary to `/usr/bin/vlsh` and automatically adds it
@@ -61,16 +60,16 @@ to `/etc/shells` via the postinst script.
 **Fedora / RHEL — install via `.rpm`:**
 
 ```sh
-curl -LO https://github.com/vlshcc/vlsh/releases/download/v1.1.5.2/vlsh-1.1.5.2-1.x86_64.rpm
-sudo rpm -U vlsh-1.1.5.2-1.x86_64.rpm
+curl -LO https://github.com/vlshcc/vlsh/releases/download/v1.1.6/vlsh-1.1.6-1.x86_64.rpm
+sudo rpm -U vlsh-1.1.6-1.x86_64.rpm
 ```
 
 **Other Linux — standalone binary:**
 
 ```sh
-curl -LO https://github.com/vlshcc/vlsh/releases/download/v1.1.5.2/vlsh_1.1.5.2_amd64_linux
-chmod +x vlsh_1.1.5.2_amd64_linux
-sudo mv vlsh_1.1.5.2_amd64_linux /usr/local/bin/vlsh
+curl -LO https://github.com/vlshcc/vlsh/releases/download/v1.1.6/vlsh_1.1.6_amd64_linux
+chmod +x vlsh_1.1.6_amd64_linux
+sudo mv vlsh_1.1.6_amd64_linux /usr/local/bin/vlsh
 ```
 
 ### Prerequisites (from source)
@@ -139,11 +138,10 @@ vlsh will look for the configuration file `$HOME/.vlshrc`.
 Here's an example -file:
 
 ```
-"paths
-path=/usr/local/bin
-path=/usr/bin;/bin
+# Environment
+export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
 
-"aliases
+# Aliases
 alias gs=git status
 alias gps=git push
 alias gpl=git pull
@@ -152,11 +150,11 @@ alias gc=git commit -sa
 alias gl=git log
 alias vim=nvim
 
-"style (define in RGB colors)
-style_git_bg=44,59,71
-style_git_fg=251,255,234
-style_debug_bg=255,255,255
-style_debug_fb=251,255,234
+# Style (define in RGB colors)
+#style_git_bg=44,59,71
+#style_git_fg=251,255,234
+#style_debug_bg=255,255,255
+#style_debug_fb=251,255,234
 ```
 
 
@@ -184,11 +182,13 @@ plugins/        – plugin loader and hook dispatcher
 
 ### Config file (~/.vlshrc)
 
-A plain-text file read on every command. Lines beginning with `"` are comments.
+A plain-text file sourced at startup. Lines beginning with `#` are comments.
+`export` and `unset` lines are executed as shell commands; `alias` and `style`
+lines use the config syntax below.
 
 | Directive | Example | Meaning |
 |-----------|---------|---------|
-| `path=<dir>` | `path=/usr/bin;/bin` | Add dirs to executable search path (`;`-separated) |
+| `export KEY=VALUE` | `export PATH="/opt/bin:$PATH"` | Set an environment variable (`$VAR` is expanded) |
 | `alias <name>=<cmd>` | `alias gs=git status` | Define a command alias |
 | `style_git_bg=r,g,b` | `style_git_bg=44,59,71` | Git-branch prompt background colour |
 | `style_git_fg=r,g,b` | `style_git_fg=251,255,234` | Git-branch prompt foreground colour |
@@ -210,9 +210,6 @@ A plain-text file read on every command. Lines beginning with `"` are comments.
 | `ls [dir]` | Colorised directory listing (falls through to system `ls` when flags are passed) |
 | `mux` | Enter terminal multiplexer mode |
 | `ocp <src> <dst>` | Copy file, overwriting destination |
-| `path list` | Show PATH entries |
-| `path add <dir>` | Append a directory to PATH |
-| `path remove <dir>` | Remove a directory from PATH |
 | `plugins list` | List locally installed plugins with version and status |
 | `plugins enable <name>` | Enable a disabled plugin by name |
 | `plugins enable all` | Enable every plugin at once |
@@ -228,9 +225,6 @@ A plain-text file read on every command. Lines beginning with `"` are comments.
 | `style list` | Show current style/colour settings |
 | `style set <key> <r> <g> <b>` | Set a prompt colour (RGB 0–255) |
 | `unset <NAME> …` | Remove one or more environment variables |
-| `venv list` | List shell environment variables set via `venv` |
-| `venv add <NAME> <value>` | Set an environment variable for the current session |
-| `venv rm <NAME>` | Unset an environment variable |
 | `version` | Print the vlsh version |
 
 ### Shell features
@@ -326,9 +320,12 @@ grep pattern < file.txt | wc -l
 
 #### `export` and `unset`
 
+`export` is the standard way to set environment variables, including `PATH`.
+It works both interactively and in `~/.vlshrc`:
+
 ```
-export EDITOR=nvim          # set and mark variable for child processes
-export PATH                  # re-export an existing variable (no-op in vlsh; all vars inherit)
+export PATH="/opt/bin:$PATH" # prepend to PATH ($PATH is expanded)
+export EDITOR=nvim           # set and mark variable for child processes
 export                       # list all current environment variables
 unset EDITOR                 # remove a variable from the environment
 ```
@@ -342,7 +339,7 @@ source ~/.vlshrc
 . ~/.vlshrc          # POSIX dot-command synonym
 ```
 
-This is how vlsh loads its own configuration at startup. You can use it to reload your config live after editing it.
+`export` and `unset` lines in `~/.vlshrc` are executed automatically at startup. You can use `source` to reload your config live after editing it.
 
 #### `cd` improvements
 
@@ -402,7 +399,7 @@ for f in files {
     println(f)
 }
 ```
-vlsh looks for the `v` binary in the configured `path=` directories first, then falls back to the system `PATH`.
+vlsh looks for the `v` binary in `$PATH`.
 
 ### Plugins
 

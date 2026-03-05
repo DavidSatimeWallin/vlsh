@@ -8,11 +8,10 @@ import cmds
 import exec
 import mux
 import plugins
-import shellops { ChainPart, builtin_redirect, split_commands, venv_track, venv_tracked,
-	venv_untrack, write_redirect }
+import shellops { ChainPart, builtin_redirect, split_commands, write_redirect }
 import utils
 
-const version = '1.1.5.2'
+const version = '1.1.6'
 
 fn pre_prompt() string {
 	mut current_dir := term.colorize(term.bold, '$os.getwd() ')
@@ -119,6 +118,7 @@ fn main() {
 	}
 	load_history(mut r)
 	os.setenv('?', '0', true)
+	source_rc(mut loaded_plugins)
 	for {
 		println(pre_prompt())
 		seg := plugins.prompt_segments(loaded_plugins)
@@ -144,9 +144,18 @@ fn main() {
 
 
 
-// venv helpers — the list of venv-managed variable names is stored inside the
-// environment itself (as a colon-separated value) so no global state is needed.
-// The implementation lives in the shellops sub-module and is imported above.
+// source_rc processes export/unset lines from ~/.vlshrc at startup so that
+// environment variables (including PATH) are set before the first prompt.
+fn source_rc(mut loaded_plugins []plugins.Plugin) {
+	if !os.exists(cfg.config_file) { return }
+	lines := os.read_lines(cfg.config_file) or { return }
+	for line in lines {
+		t := line.trim_space()
+		if t.starts_with('export ') || t.starts_with('unset ') {
+			main_loop(t, mut loaded_plugins)
+		}
+	}
+}
 
 // dispatch_cmd executes a fully parsed command and returns its exit code.
 // Keeping this separate from main_loop lets main_loop set/unset temporary
@@ -323,16 +332,12 @@ fn dispatch_cmd(cmd string, args []string, mut loaded_plugins []plugins.Plugin, 
 	'ls' {
 		cmds.ls(args) or {
 			if err.msg() == '__fallthrough__' {
-				// flags were passed — let the system ls handle it
-				local_cfg := cfg.get() or {
-					utils.warn('config error: ${err.msg()} -- using fallback system paths')
-					cfg.Cfg{ paths: cfg.fallback_paths.clone() }
-				}
+				local_cfg := cfg.get() or { cfg.Cfg{} }
 					mut t := exec.Task{
 						cmd: exec.Cmd_object{
-							cmd  : cmd,
-							args : args,
-							cfg  : local_cfg
+							cmd     : cmd,
+							args    : args,
+							aliases : local_cfg.aliases
 						}
 					}
 					ls_code := t.prepare_task() or {
@@ -342,50 +347,6 @@ fn dispatch_cmd(cmd string, args []string, mut loaded_plugins []plugins.Plugin, 
 					plugins.run_output_hooks(loaded_plugins, full_cmdline, ls_code, t.last_output)
 				} else {
 					utils.fail(err.msg())
-				}
-			}
-		}
-		'path' {
-			subcmd := if args.len > 0 { args[0] } else { 'list' }
-			match subcmd {
-				'list' {
-					current_paths := cfg.paths() or {
-						utils.fail(err.msg())
-						return 1
-					}
-					for p in current_paths {
-						println(p)
-					}
-				}
-				'add' {
-					if args.len < 2 {
-						utils.fail('usage: path add <dir>')
-						return 1
-					}
-					dir := args[1]
-					if !os.exists(dir) {
-						utils.fail('directory does not exist: ${dir}')
-						return 1
-					}
-					cfg.add_path(dir) or {
-						utils.fail(err.msg())
-						return 1
-					}
-					println('added ${dir} to PATH')
-				}
-				'remove' {
-					if args.len < 2 {
-						utils.fail('usage: path remove <dir>')
-						return 1
-					}
-					cfg.remove_path(args[1]) or {
-						utils.fail(err.msg())
-						return 1
-					}
-					println('removed ${args[1]} from PATH')
-				}
-				else {
-					utils.fail('path: unknown subcommand "${subcmd}" (available: list, add, remove)')
 				}
 			}
 		}
@@ -575,58 +536,16 @@ fn dispatch_cmd(cmd string, args []string, mut loaded_plugins []plugins.Plugin, 
 				}
 			}
 		}
-		'venv' {
-			subcmd := if args.len > 0 { args[0] } else { 'list' }
-			match subcmd {
-				'list' {
-					keys := venv_tracked()
-					if keys.len == 0 {
-						println('no session variables set')
-					} else {
-						for key in keys {
-							println('${term.bold(key)}=${os.getenv(key)}')
-						}
-					}
-				}
-				'add' {
-					if args.len < 3 {
-						utils.fail('usage: venv add <NAME> <value>')
-						return 1
-					}
-					name  := args[1]
-					value := args[2..].join(' ')
-					os.setenv(name, value, true)
-					venv_track(name)
-					println('${name} set to ${value}')
-				}
-				'rm' {
-					if args.len < 2 {
-						utils.fail('usage: venv rm <NAME>')
-						return 1
-					}
-					name := args[1]
-					os.unsetenv(name)
-					venv_untrack(name)
-					println('${name} unset')
-				}
-				else {
-					utils.fail('venv: unknown subcommand "${subcmd}" (available: list, add, rm)')
-				}
-			}
-		}
 		else {
 			if plugins.dispatch(loaded_plugins, cmd, args) {
 				return 0
 			}
-		local_cfg := cfg.get() or {
-			utils.warn('config error: ${err.msg()} -- using fallback system paths')
-			cfg.Cfg{ paths: cfg.fallback_paths.clone() }
-		}
+		local_cfg := cfg.get() or { cfg.Cfg{} }
 		mut t := exec.Task{
 			cmd: exec.Cmd_object{
-				cmd  : cmd,
-				args : args,
-				cfg  : local_cfg
+				cmd     : cmd,
+				args    : args,
+				aliases : local_cfg.aliases
 			}
 		}
 		code := t.prepare_task() or {

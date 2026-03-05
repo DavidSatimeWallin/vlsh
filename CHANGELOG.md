@@ -1,3 +1,68 @@
+## 2026-03-05 — version 1.1.6
+
+### Breaking changes
+
+**Unified environment variable handling (POSIX `export`/`unset` only)**
+- The three separate mechanisms for managing environment variables —
+  `path=` directives in `~/.vlshrc`, the `venv` builtin, and `export` —
+  have been consolidated into the single POSIX-standard `export`/`unset`
+  interface.
+- The `path=` config directive and the `path` builtin command (list / add /
+  remove) have been removed. PATH is now set via `export` in `~/.vlshrc`,
+  e.g. `export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"`.
+- The `venv` builtin command (list / add / rm) and its `__VLSH_VENV`
+  registry have been removed. Use `export KEY=VALUE` and `unset KEY`
+  instead.
+
+### Features
+
+**`~/.vlshrc` now supports `export` and `unset`**
+- At startup, `export` and `unset` lines in `~/.vlshrc` are executed
+  through the shell's `main_loop`, so `export PATH="/opt/bin:$PATH"` works
+  with full `$VAR` expansion.
+- The config file now uses `#` for comments (POSIX-style) instead of `"`.
+
+**`find_exe` uses `$PATH` directly**
+- `exec/find_exe()` now reads `os.getenv('PATH')` and splits on `:` to
+  locate executables, instead of reading a custom `cfg.Cfg.paths` field.
+- When `$PATH` is empty, a hardcoded fallback (`/usr/local/bin`,
+  `/usr/bin`, `/bin`) is used so the shell cannot be softlocked.
+
+### Removals
+
+- `cfg.Cfg.paths` field removed from the config struct.
+- `cfg.extract_paths()`, `cfg.add_path()`, `cfg.remove_path()`,
+  `cfg.paths()`, and `cfg.fallback_paths` constant removed.
+- `shellops.venv_registry`, `shellops.venv_tracked()`,
+  `shellops.venv_track()`, `shellops.venv_untrack()` removed.
+- `exec.Cmd_object.cfg` field replaced with `exec.Cmd_object.aliases`
+  (the only config data the exec module still needs).
+- `find_v_exe()` no longer takes a `cfg_paths` parameter.
+
+### Housekeeping
+
+- `cfg/cfg.v`: alias and style parsers hardened — `starts_with()` checks
+  replace fragile `ent[0..N]` slicing that could panic on short lines.
+- Default `~/.vlshrc` rewritten in POSIX-style format with `#` comments
+  and `export PATH=...`.
+- Help system updated: `path` and `venv` entries removed; `export`,
+  `unset`, and `source` entries added.
+- `.gitignore` added — ignores compiled `vlsh` binary, `builds/`, and V
+  compiler artifacts.
+- `builds/` directory (34 MB of release binaries) removed from git
+  tracking.
+- `build_deb.sh` moved to `pkg/build.sh` alongside the packaging
+  templates.
+- `CHANGELOG` renamed to `CHANGELOG.md`.
+- README updated: config example, feature bullets, built-in commands
+  table, `.vsh` section, and POSIX compatibility section all reflect the
+  new `export`-only approach.
+
+### Version bumps
+- Version bumped to `1.1.6` in `vlsh.v`, `v.mod`, and `README.md`.
+
+---
+
 ## 2026-03-05 — version 1.1.5.2
 
 ### Bug fixes
