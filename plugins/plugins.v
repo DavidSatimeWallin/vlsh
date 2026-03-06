@@ -4,9 +4,15 @@ import os
 import net.http
 import json
 
-// v_compiler is set at build time to the exact V binary that compiled vlsh,
-// so plugins are always compiled with a working toolchain.
-const v_compiler = @VEXE
+fn find_v_compiler() string {
+	for dir in os.getenv('PATH').split(':').filter(it.len > 0) {
+		full := os.join_path(dir, 'v')
+		if os.exists(full) {
+			return full
+		}
+	}
+	return ''
+}
 
 const remote_api = 'https://api.github.com/repos/vlshcc/plugins/contents'
 const raw_base   = 'https://raw.githubusercontent.com/vlshcc/plugins/main'
@@ -302,7 +308,11 @@ pub fn load() []Plugin {
 		return []
 	}
 
-	v_exe := v_compiler
+	v_exe := find_v_compiler()
+	if v_exe == '' {
+		eprintln('vlsh: v compiler not found in PATH — cannot compile plugins')
+		return []
+	}
 	installed := list_installed()
 	dis := read_disabled()
 	mut result := []Plugin{}
